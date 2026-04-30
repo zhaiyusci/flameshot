@@ -7,6 +7,7 @@
 #include "utils/abstractlogger.h"
 #include "utils/globalvalues.h"
 
+#include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
 #include <QFont>
@@ -925,7 +926,11 @@ QString OcrResultWidget::findKatexDist() const
         return resolvedPath;
     }
 
+    const QDir appDir(QCoreApplication::applicationDirPath());
     const QStringList candidates = {
+        appDir.filePath(QStringLiteral("../share/katex")),
+        appDir.filePath(QStringLiteral("../share/katex/dist")),
+        appDir.filePath(QStringLiteral("../share/javascript/katex")),
         QStringLiteral("/usr/share/katex"),
         QStringLiteral("/usr/share/javascript/katex"),
         QStringLiteral("/usr/lib/node_modules/katex/dist"),
