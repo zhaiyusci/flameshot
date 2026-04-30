@@ -83,6 +83,7 @@
     - [Arch](#arch)
   - [Build](#build)
   - [Install](#install)
+  - [AppImage packaging](#appimage-packaging)
 - [License](#license)
 - [Privacy Policy](#privacy-policy)
 - [Code Signing Policy](#code-signing-policy)
@@ -640,6 +641,109 @@ cmake --install "$BUILD_DIR"
 # You may need to run this with privileges
 cmake --install "$BUILD_DIR"
 ```
+
+### AppImage packaging
+
+The following workflow builds a local AppImage from the current checkout. It
+bundles Flameshot, Qt, Qt WebEngine, image plugins, translations, and KaTeX
+assets for Markdown/formula preview. It does not bundle PaddleOCR, PaddlePaddle,
+or OCR models; packaged builds should point to an external PaddleOCR environment
+with `paddleOcrPython` and `paddleOcrCache` in `flameshot.ini`.
+
+Run these commands from the repository root:
+
+```shell
+export BUILD_DIR=build
+export APPDIR="$PWD/../AppDir"
+export APPIMAGE_TOOLS="$PWD/../appimage-tools"
+export APPIMAGE_VERSION=14.0.0-ocr
+
+cmake -S . -B "$BUILD_DIR" -DCMAKE_BUILD_TYPE=Release
+cmake --build "$BUILD_DIR" -j"$(nproc)"
+
+mkdir -p "$APPDIR" "$APPIMAGE_TOOLS"
+cmake --install "$BUILD_DIR" --prefix "$APPDIR/usr"
+```
+
+Download the AppImage packaging tools. If your network needs a proxy, set
+`HTTP_PROXY` and `HTTPS_PROXY` before running `curl`.
+
+```shell
+curl -L --fail -o "$APPIMAGE_TOOLS/linuxdeploy-x86_64.AppImage" \
+    https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+curl -L --fail -o "$APPIMAGE_TOOLS/linuxdeploy-plugin-qt-x86_64.AppImage" \
+    https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
+curl -L --fail -o "$APPIMAGE_TOOLS/appimagetool-x86_64.AppImage" \
+    https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
+curl -L --fail -C - -o "$APPIMAGE_TOOLS/runtime-x86_64" \
+    https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-x86_64
+chmod +x "$APPIMAGE_TOOLS"/*.AppImage
+```
+
+Remove development-only files from the staged AppDir and make the desktop entry
+use the AppImage launcher name:
+
+```shell
+rm -rf "$APPDIR/usr/include" \
+       "$APPDIR/usr/lib/cmake" \
+       "$APPDIR/usr/lib/pkgconfig" \
+       "$APPDIR/usr/lib/libQtColorWidgets.a" \
+       "$APPDIR/usr/lib/libkdsingleapplication-qt6.a" \
+       "$APPDIR/usr/lib64/cmake" \
+       "$APPDIR/usr/lib64/pkgconfig" \
+       "$APPDIR/usr/lib64/libQtColorWidgets.a" \
+       "$APPDIR/usr/lib64/libkdsingleapplication-qt6.a"
+
+sed -i 's#^Exec=.*/flameshot$#Exec=flameshot#' \
+    "$APPDIR/usr/share/applications/org.flameshot.Flameshot.desktop"
+desktop-file-validate \
+    "$APPDIR/usr/share/applications/org.flameshot.Flameshot.desktop"
+```
+
+Bundle KaTeX so Markdown/formula preview works on systems that do not already
+have KaTeX installed:
+
+```shell
+npm install -g katex
+KATEX_DIST="$(npm root -g)/katex/dist"
+mkdir -p "$APPDIR/usr/share/katex"
+cp -a "$KATEX_DIST"/. "$APPDIR/usr/share/katex/"
+```
+
+Deploy Qt dependencies with `linuxdeploy`, then run `appimagetool` explicitly
+with the cached runtime file. Keeping these as two steps avoids `appimagetool`
+trying to download the runtime during packaging, which can hang in restricted or
+proxied environments.
+
+```shell
+env PATH="$APPIMAGE_TOOLS:$PATH" \
+    QMAKE="${QMAKE:-/usr/bin/qmake6}" \
+    QMAKE6="${QMAKE6:-/usr/bin/qmake6}" \
+    "$APPIMAGE_TOOLS/linuxdeploy-x86_64.AppImage" \
+    --appdir "$APPDIR" \
+    --executable "$APPDIR/usr/bin/flameshot" \
+    --desktop-file "$APPDIR/usr/share/applications/org.flameshot.Flameshot.desktop" \
+    --icon-file "$APPDIR/usr/share/icons/hicolor/scalable/apps/org.flameshot.Flameshot.svg" \
+    --plugin qt
+
+"$APPIMAGE_TOOLS/appimagetool-x86_64.AppImage" \
+    --runtime-file "$APPIMAGE_TOOLS/runtime-x86_64" \
+    "$APPDIR" \
+    "$PWD/../Flameshot-${APPIMAGE_VERSION}-x86_64.AppImage"
+```
+
+Useful checks before sharing the AppImage:
+
+```shell
+find "$APPDIR" \( -iname '*paddle*' -o -iname '*paddlex*' -o -iname '.venv-paddleocr' \)
+"$PWD/../Flameshot-${APPIMAGE_VERSION}-x86_64.AppImage" --appimage-help
+QT_QPA_PLATFORM=offscreen XDG_RUNTIME_DIR=/tmp \
+    "$PWD/../Flameshot-${APPIMAGE_VERSION}-x86_64.AppImage" --version
+```
+
+The first command should print nothing if PaddleOCR was not bundled. If the
+helper AppImages cannot mount because FUSE is unavailable, extract them with
+`--appimage-extract` and run the extracted `squashfs-root/AppRun` instead.
 
 ### FAQ
 
