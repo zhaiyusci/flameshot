@@ -15,6 +15,7 @@
 #include "core/capturerequest.h"
 #include "core/flameshot.h"
 #include "core/flameshotdaemon.h"
+#include "tools/ocr/ocrpreprocessor.h"
 #include "utils/abstractlogger.h"
 #include "utils/confighandler.h"
 #include "utils/filenamehandler.h"
@@ -29,8 +30,10 @@
 
 #include <QApplication>
 #include <QDir>
+#include <QImage>
 #include <QLibraryInfo>
 #include <QSharedMemory>
+#include <QTextStream>
 #include <QTimer>
 #include <QTranslator>
 
@@ -198,6 +201,46 @@ void reinitializeAsQApplication(int& argc,
     configureApp(true, translator, qtTranslator);
 }
 
+int runOcrPreprocessCommand(const QStringList& arguments)
+{
+    if (arguments.size() != 5) {
+        QTextStream(stderr)
+          << QStringLiteral(
+               "Usage: flameshot ocr-preprocess text|latex input.png output.png\n");
+        return 2;
+    }
+
+    const QString kind = arguments.at(2).trimmed().toLower();
+    const QString inputPath = arguments.at(3);
+    const QString outputPath = arguments.at(4);
+    QImage input(inputPath);
+    if (input.isNull()) {
+        QTextStream(stderr)
+          << QStringLiteral("Unable to read image: %1\n").arg(inputPath);
+        return 1;
+    }
+
+    QImage output;
+    if (kind == QStringLiteral("text")) {
+        output = OcrPreprocessor::preparedTextOcrImage(input);
+    } else if (kind == QStringLiteral("latex") ||
+               kind == QStringLiteral("formula")) {
+        output = OcrPreprocessor::preparedLatexOcrImage(input);
+    } else {
+        QTextStream(stderr)
+          << QStringLiteral("Unknown OCR preprocessing kind: %1\n").arg(kind);
+        return 2;
+    }
+
+    if (output.isNull() || !output.save(outputPath, "PNG")) {
+        QTextStream(stderr)
+          << QStringLiteral("Unable to write image: %1\n").arg(outputPath);
+        return 1;
+    }
+
+    return 0;
+}
+
 int main(int argc, char* argv[])
 {
 
@@ -261,6 +304,11 @@ int main(int argc, char* argv[])
      * ------------*/
     new QCoreApplication(argc, argv);
     configureApp(false, translator, qtTranslator);
+    if (qApp->arguments().value(1) == QStringLiteral("ocr-preprocess")) {
+        const int exitCode = runOcrPreprocessCommand(qApp->arguments());
+        delete qApp;
+        return exitCode;
+    }
 
     CommandLineParser parser;
     // Add description

@@ -20,4 +20,13 @@ public slots:
     Q_NOREPLY void attachTextToClipboard(const QString& text,
                                          const QString& notification);
     Q_NOREPLY void attachPin(const QByteArray& data);
+    Q_NOREPLY void startOcrTask(const QByteArray& data);
+
+signals:
+    void ocrTaskFinished(const QString& requestId,
+                         int kind,
+                         bool ok,
+                         const QString& result,
+                         const QString& error,
+                         const QString& preparedImagePath);
 };

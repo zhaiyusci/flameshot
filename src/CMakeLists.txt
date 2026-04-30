@@ -23,6 +23,8 @@ if (USE_WAYLAND_CLIPBOARD)
     find_package(KF6GuiAddons)
 endif()
 
+find_package(Qt${QT_VERSION_MAJOR} CONFIG QUIET COMPONENTS WebEngineWidgets)
+
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
@@ -194,6 +196,11 @@ target_link_libraries(
         flameshot
         Qt${QT_VERSION_MAJOR}::DBus
 )
+endif()
+
+if (TARGET Qt${QT_VERSION_MAJOR}::WebEngineWidgets)
+  target_compile_definitions(flameshot PRIVATE FLAMESHOT_HAVE_QT_WEBENGINE=1)
+  target_link_libraries(flameshot Qt${QT_VERSION_MAJOR}::WebEngineWidgets)
 endif()
 
 if (USE_KDSINGLEAPPLICATION)

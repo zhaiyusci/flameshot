@@ -31,3 +31,8 @@ void FlameshotDBusAdapter::attachPin(const QByteArray& data)
 {
     FlameshotDaemon::instance()->attachPin(data);
 }
+
+void FlameshotDBusAdapter::startOcrTask(const QByteArray& data)
+{
+    FlameshotDaemon::instance()->attachOcrTask(data);
+}

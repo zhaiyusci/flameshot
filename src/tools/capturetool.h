@@ -51,6 +51,8 @@ public:
         TYPE_INVERT = 22,
         TYPE_ACCEPT = 23,
         TYPE_CANCEL = 24,
+        TYPE_OCR = 25,
+        TYPE_LATEX_OCR = 26,
     };
     Q_ENUM(Type);
 
@@ -75,6 +77,9 @@ public:
         REQ_ADD_CHILD_WIDGET,
         // Instance this->widget()'s widget which handles its own lifetime.
         REQ_ADD_EXTERNAL_WIDGETS,
+        // Close the capture widget without exporting a screenshot or reporting
+        // an aborted capture. Used when work is handed off to a background task.
+        REQ_CLOSE_GUI_WITHOUT_CAPTURE,
         // increase tool size for all tools
         REQ_INCREASE_TOOL_SIZE,
         // decrease tool size for all tools
@@ -88,7 +93,7 @@ public:
     {}
 
     // TODO unused
-    virtual void setCapture(const QPixmap& pixmap){};
+    virtual void setCapture(const QPixmap& pixmap) {};
 
     // Returns false when the tool is in an inconsistent state and shouldn't
     // be included in the tool undo/redo stack.

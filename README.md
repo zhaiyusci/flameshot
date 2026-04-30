@@ -59,6 +59,7 @@
 - [Usage](#usage)
   - [CLI configuration](#cli-configuration)
   - [Config file](#config-file)
+  - [OCR](#ocr)
 - [Keyboard Shortcuts](#keyboard-shortcuts)
   - [Local](#local)
   - [Global](#global)
@@ -94,6 +95,7 @@
 - Easy to use.
 - In-app screenshot editing.
 - DBus interface.
+- OCR to editable Markdown with formula recognition.
 - Upload to Imgur.
 
 ## Usage
@@ -192,6 +194,87 @@ Windows path: `C:\Users\{YOURNAME}\AppData\Roaming\flameshot\flameshot.ini`.
 When copying over the config file from Linux to Windows or vice versa,
 make sure to correct the `savePath` variable,\
 so that the screenshots save in the right directory on your desired file system.
+
+### OCR
+
+The OCR tool sends the selected capture to a background worker and opens an
+editable result window. Results are returned as Markdown; formulas delimited as
+`$$...$$`, `\[...\]`, `$...$`, or `\(...\)` are rendered in the preview with
+KaTeX when Qt WebEngine and local KaTeX assets are available.
+
+The current OCR backend uses PaddleOCR's `PPStructureV3` pipeline with formula
+recognition enabled. The first OCR request can take longer because PaddleOCR may
+download its inference models. By default Flameshot uses:
+
+- `PP-DocLayout-M` for layout detection.
+- `PP-OCRv5_mobile_det` and `PP-OCRv5_mobile_rec` for text OCR.
+- `PP-FormulaNet_plus-S` for formula recognition.
+
+To deploy the backend in a local Python virtual environment:
+
+```shell
+python3 -m venv .venv-paddleocr
+. .venv-paddleocr/bin/activate
+python -m pip install --upgrade pip
+
+# CPU install. For GPU wheels, follow the PaddlePaddle installation guide:
+# https://www.paddleocr.ai/latest/en/version3.x/paddlepaddle_installation.html
+python -m pip install paddlepaddle==3.2.0 -i https://www.paddlepaddle.org.cn/packages/stable/cpu/
+python -m pip install paddleocr
+```
+
+You can verify the backend environment before launching Flameshot:
+
+```shell
+. .venv-paddleocr/bin/activate
+python -c "from paddleocr import PPStructureV3, FormulaRecognitionPipeline"
+```
+
+If the import fails because optional document parsing dependencies are missing,
+install PaddleOCR with its optional extras, for example
+`python -m pip install "paddleocr[all]"`.
+
+Flameshot looks for the OCR Python executable in these places, in order:
+
+- `FLAMESHOT_PADDLEOCR_PYTHON`, if set.
+- `.venv-paddleocr/bin/python` near the source or build directory.
+- `$HOME/.local/share/flameshot-ocr-backends/paddleocr/bin/python`.
+- `python3` or `python` from `PATH`.
+
+For a packaged or installed build, setting the path explicitly is the most
+predictable option:
+
+```shell
+export FLAMESHOT_PADDLEOCR_PYTHON="$HOME/.local/share/flameshot-ocr-backends/paddleocr/bin/python"
+export FLAMESHOT_PADDLEOCR_CACHE="$HOME/.cache/flameshot/paddlex"
+```
+
+The model cache defaults to `$HOME/.cache/flameshot/paddlex` when no nearby
+`.cache/paddlex` directory exists. You can force a cache location with
+`FLAMESHOT_PADDLEOCR_CACHE`.
+
+To enable Markdown and formula preview, build Flameshot with Qt WebEngine
+available and install KaTeX locally. Flameshot resolves KaTeX from
+`FLAMESHOT_KATEX_DIST`, from an installed npm package, or from common system
+paths:
+
+```shell
+npm install -g katex
+# or:
+export FLAMESHOT_KATEX_DIST=/path/to/katex/dist
+```
+
+Useful OCR environment variables:
+
+- `FLAMESHOT_PADDLEOCR_PYTHON`: Python executable that can import `paddleocr`.
+- `FLAMESHOT_PADDLEOCR_CACHE`: PaddleX/PaddleOCR model cache directory.
+- `FLAMESHOT_PADDLEOCR_TIMEOUT_MS`: per-request timeout, default `300000`.
+- `FLAMESHOT_PADDLEOCR_IDLE_TIMEOUT_MS`: worker idle shutdown timeout, default
+  `1800000`.
+- `FLAMESHOT_PADDLEOCR_LAYOUT_MODEL`, `FLAMESHOT_PADDLEOCR_TEXT_DET_MODEL`,
+  `FLAMESHOT_PADDLEOCR_TEXT_REC_MODEL`, and
+  `FLAMESHOT_PADDLEOCR_FORMULA_MODEL`: override PaddleOCR model names.
+- `FLAMESHOT_KATEX_DIST`: KaTeX package or `dist` directory for preview.
 
 ## Keyboard shortcuts
 
@@ -430,6 +513,8 @@ Also you can open and build/debug the project in a C++ IDE. For example, in Qt C
 - OpenSSL
 - CA Certificates
 - Qt Image Formats - for additional export image formats (e.g. tiff, webp, and more)
+- Qt WebEngine Widgets - for OCR Markdown/KaTeX preview
+- Node.js/npm or a system KaTeX package - for OCR formula preview assets
 
 #### Debian
 
@@ -441,7 +526,7 @@ apt install g++ cmake build-essential qt6-base-dev qt6-tools-dev-tools qt6-svg-d
 apt install libkf6guiaddons-dev libqt6dbus6 libqt6network6 libqt6core6 libqt6widgets6 libqt6gui6 libqt6svg6 qt6-qpa-plugins
 
 # Optional
-apt install git openssl ca-certificates qt6-image-formats-plugins
+apt install git openssl ca-certificates qt6-image-formats-plugins qt6-webengine-dev npm
 ```
 
 #### Fedora
@@ -454,7 +539,7 @@ dnf install gcc-c++ cmake qt6-qtbase-devel qt6-qtsvg-devel qt6-qttools qt6-lingu
 dnf install qt6-qtbase qt6-qtsvg kf6-kguiaddons
 
 # Optional
-dnf install git openssl ca-certificates qt6-qtimageformats
+dnf install git openssl ca-certificates qt6-qtimageformats qt6-qtwebengine-devel npm
 ```
 
 #### Arch
@@ -467,7 +552,7 @@ pacman -S cmake base-devel git qt6-base qt6-tools kguiaddons
 pacman -S qt6-svg
 
 # Optional
-pacman -S openssl ca-certificates qt6-imageformats
+pacman -S openssl ca-certificates qt6-imageformats qt6-webengine npm
 ```
 
 #### Nix

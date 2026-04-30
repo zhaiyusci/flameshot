@@ -135,6 +135,11 @@ void TrayIcon::initMenu()
             &QAction::triggered,
             Flameshot::instance(),
             &Flameshot::launcher);
+    m_ocrJobsAction = new QAction(tr("OCR &Jobs"), this);
+    connect(m_ocrJobsAction,
+            &QAction::triggered,
+            FlameshotDaemon::instance(),
+            &FlameshotDaemon::showOcrJobManager);
     auto* configAction = new QAction(tr("&Configuration"), this);
     connect(configAction,
             &QAction::triggered,
@@ -192,6 +197,7 @@ void TrayIcon::initMenu()
 
     m_menu->addAction(m_captureAction);
     m_menu->addAction(m_launcherAction);
+    m_menu->addAction(m_ocrJobsAction);
     m_menu->addSeparator();
 #ifdef ENABLE_IMGUR
     m_menu->addAction(recentAction);

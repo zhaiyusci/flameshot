@@ -13,6 +13,7 @@ class QDBusMessage;
 class QDBusConnection;
 class TrayIcon;
 class CaptureWidget;
+class OcrJobManagerWidget;
 
 #if !defined(DISABLE_UPDATE_CHECKER)
 class QNetworkAccessManager;
@@ -30,12 +31,14 @@ public:
     static void copyToClipboard(const QPixmap& capture);
     static void copyToClipboard(const QString& text,
                                 const QString& notification = "");
+    static void startOcrTask(const QPixmap& capture, int kind);
     static bool isThisInstanceHostingWidgets();
 
     void sendTrayNotification(
       const QString& text,
       const QString& title = QStringLiteral("Flameshot Info"),
       const int timeout = 5000);
+    void showOcrJobManager();
 
 #if defined(USE_KDSINGLEAPPLICATION) &&                                        \
   (defined(Q_OS_MACOS) || defined(Q_OS_WIN))
@@ -68,6 +71,17 @@ private:
     void attachScreenshotToClipboard(const QByteArray& screenshot);
     void attachTextToClipboard(const QString& text,
                                const QString& notification);
+    void attachOcrTask(const QPixmap& capture,
+                       int kind,
+                       const QString& requestId = QString());
+    void attachOcrTask(const QByteArray& data);
+    OcrJobManagerWidget* ensureOcrJobManager();
+    void sendOcrTaskFinished(const QString& requestId,
+                             int kind,
+                             bool ok,
+                             const QString& result,
+                             const QString& error,
+                             const QString& preparedImagePath);
 
     void initTrayIcon();
     void enableTrayIcon(bool enable);
@@ -83,6 +97,7 @@ private:
     bool m_clipboardSignalBlocked;
     QList<QWidget*> m_widgets;
     TrayIcon* m_trayIcon;
+    OcrJobManagerWidget* m_ocrJobManager;
 
 #if !defined(DISABLE_UPDATE_CHECKER)
     QString m_appLatestUrl;

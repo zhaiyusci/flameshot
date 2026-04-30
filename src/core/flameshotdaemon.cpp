@@ -1,5 +1,6 @@
 #include "flameshotdaemon.h"
 #include "core/flameshot.h"
+#include "tools/ocr/ocrjobmanagerwidget.h"
 #include "tools/pin/pinwidget.h"
 #include "utils/abstractlogger.h"
 #include "utils/confighandler.h"
@@ -68,6 +69,7 @@ FlameshotDaemon::FlameshotDaemon()
   , m_hostingClipboard(false)
   , m_clipboardSignalBlocked(false)
   , m_trayIcon(nullptr)
+  , m_ocrJobManager(nullptr)
 #if !defined(DISABLE_UPDATE_CHECKER)
   , m_appLatestVersion(QStringLiteral(APP_VERSION).replace("v", ""))
   , m_showManualCheckAppUpdateStatus(false)
@@ -181,12 +183,38 @@ void FlameshotDaemon::copyToClipboard(const QString& text,
 #endif
 }
 
+void FlameshotDaemon::startOcrTask(const QPixmap& capture, int kind)
+{
+    if (instance()) {
+        instance()->attachOcrTask(capture, kind);
+        return;
+    }
+
+    QByteArray data;
+    QDataStream stream(&data, QIODevice::WriteOnly);
+
+#if defined(USE_KDSINGLEAPPLICATION) &&                                        \
+  (defined(Q_OS_MACOS) || defined(Q_OS_WIN))
+    auto kdsa = KDSingleApplication(QStringLiteral("org.flameshot.Flameshot"));
+    stream << QStringLiteral("startOcrTask") << capture << kind;
+    kdsa.sendMessage(data);
+#else
+    stream << capture << kind;
+    QDBusMessage m = createMethodCall(QStringLiteral("startOcrTask"));
+    m << data;
+    call(m);
+#endif
+}
+
 /**
  * @brief Is this instance of flameshot hosting any windows as a daemon?
  */
 bool FlameshotDaemon::isThisInstanceHostingWidgets()
 {
-    return instance() && !instance()->m_widgets.isEmpty();
+    return instance() &&
+           (!instance()->m_widgets.isEmpty() ||
+            (instance()->m_ocrJobManager &&
+             instance()->m_ocrJobManager->runningJobCount() > 0));
 }
 
 void FlameshotDaemon::sendTrayNotification(const QString& text,
@@ -197,6 +225,14 @@ void FlameshotDaemon::sendTrayNotification(const QString& text,
         m_trayIcon->showMessage(
           title, text, QIcon(GlobalValues::iconPath()), timeout);
     }
+}
+
+void FlameshotDaemon::showOcrJobManager()
+{
+    auto* manager = ensureOcrJobManager();
+    manager->show();
+    manager->activateWindow();
+    manager->raise();
 }
 
 #if !defined(DISABLE_UPDATE_CHECKER)
@@ -290,7 +326,9 @@ void FlameshotDaemon::quitIfIdle()
     if (m_persist) {
         return;
     }
-    if (!m_hostingClipboard && m_widgets.isEmpty()) {
+    const bool hasOcrJobs =
+      m_ocrJobManager && m_ocrJobManager->runningJobCount() > 0;
+    if (!m_hostingClipboard && m_widgets.isEmpty() && !hasOcrJobs) {
         qApp->exit(E_OK);
     }
 }
@@ -362,6 +400,81 @@ void FlameshotDaemon::attachTextToClipboard(const QString& text,
     m_clipboardSignalBlocked = true;
     clipboard->setText(text);
     clipboard->blockSignals(false);
+}
+
+void FlameshotDaemon::attachOcrTask(const QPixmap& capture,
+                                    int kind,
+                                    const QString& requestId)
+{
+    auto taskKind =
+      kind == static_cast<int>(OcrTaskWidget::Kind::Latex)
+        ? OcrTaskWidget::Kind::Latex
+        : OcrTaskWidget::Kind::Text;
+    ensureOcrJobManager()->addTask(taskKind, capture, requestId);
+}
+
+void FlameshotDaemon::attachOcrTask(const QByteArray& data)
+{
+    QDataStream stream(data);
+    QPixmap capture;
+    int kind;
+    QString requestId;
+
+    stream >> capture >> kind;
+    if (!stream.atEnd()) {
+        stream >> requestId;
+    }
+
+    if (!capture.isNull()) {
+        attachOcrTask(capture, kind, requestId);
+    } else {
+        qWarning() << "Received \"startOcrTask\" with an empty pixmap!";
+    }
+}
+
+OcrJobManagerWidget* FlameshotDaemon::ensureOcrJobManager()
+{
+    if (m_ocrJobManager) {
+        return m_ocrJobManager;
+    }
+
+    m_ocrJobManager = new OcrJobManagerWidget();
+    connect(m_ocrJobManager,
+            &OcrJobManagerWidget::tasksChanged,
+            this,
+            &FlameshotDaemon::quitIfIdle);
+    connect(m_ocrJobManager,
+            &OcrJobManagerWidget::taskFinished,
+            this,
+            &FlameshotDaemon::sendOcrTaskFinished);
+    connect(m_ocrJobManager, &QObject::destroyed, this, [this]() {
+        m_ocrJobManager = nullptr;
+    });
+    return m_ocrJobManager;
+}
+
+void FlameshotDaemon::sendOcrTaskFinished(const QString& requestId,
+                                          int kind,
+                                          bool ok,
+                                          const QString& result,
+                                          const QString& error,
+                                          const QString& preparedImagePath)
+{
+#if !(defined(Q_OS_MACOS) || defined(Q_OS_WIN))
+    QDBusMessage signal = QDBusMessage::createSignal(
+      QStringLiteral("/"),
+      QStringLiteral("org.flameshot.Flameshot"),
+      QStringLiteral("ocrTaskFinished"));
+    signal << requestId << kind << ok << result << error << preparedImagePath;
+    QDBusConnection::sessionBus().send(signal);
+#else
+    Q_UNUSED(requestId)
+    Q_UNUSED(kind)
+    Q_UNUSED(ok)
+    Q_UNUSED(result)
+    Q_UNUSED(error)
+    Q_UNUSED(preparedImagePath)
+#endif
 }
 
 void FlameshotDaemon::initTrayIcon()
@@ -505,6 +618,20 @@ void FlameshotDaemon::messageReceivedFromSecondaryInstance(
         } else {
             qWarning() << "Received \"attachTextToClipboard\" from second "
                           "instance, but text is empty!";
+        }
+    } else if (methodCall == QStringLiteral("startOcrTask")) {
+        QPixmap capture;
+        int kind;
+        QString requestId;
+        stream >> capture >> kind;
+        if (!stream.atEnd()) {
+            stream >> requestId;
+        }
+        if (!capture.isNull()) {
+            FlameshotDaemon::instance()->attachOcrTask(capture, kind, requestId);
+        } else {
+            qWarning() << "Received \"startOcrTask\" from second instance, but "
+                          "pixmap is empty!";
         }
     } else {
         qWarning() << "Received unknown message from second instance:"

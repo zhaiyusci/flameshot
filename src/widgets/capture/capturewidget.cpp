@@ -57,6 +57,7 @@ CaptureWidget::CaptureWidget(const CaptureRequest& req,
   , m_toolSizeByKeyboard(0)
   , m_mouseIsClicked(false)
   , m_captureDone(false)
+  , m_closeWithoutCapture(false)
   , m_previewEnabled(true)
   , m_adjustmentButtonPressed(false)
   , m_configError(false)
@@ -324,7 +325,7 @@ CaptureWidget::~CaptureWidget()
         geometry.setTopLeft(geometry.topLeft() + m_context.widgetOffset);
         Flameshot::instance()->exportCapture(
           pixmap(), geometry, m_context.request);
-    } else {
+    } else if (!m_closeWithoutCapture) {
         emit Flameshot::instance()->captureFailed();
     }
 }
@@ -342,6 +343,7 @@ void CaptureWidget::initButtons()
         for (auto* buttonList : { &allButtonTypes, &visibleButtonTypes }) {
             buttonList->removeOne(CaptureTool::TYPE_SAVE);
             buttonList->removeOne(CaptureTool::TYPE_COPY);
+            buttonList->removeOne(CaptureTool::TYPE_OCR);
 #ifdef ENABLE_IMGUR
             buttonList->removeOne(CaptureTool::TYPE_IMAGEUPLOADER);
 #endif
@@ -471,7 +473,10 @@ void CaptureWidget::initHelpMessage()
     QList<QPair<QString, QString>> keyMap;
     keyMap << std::pair(tr("Mouse"), tr("Select screenshot area"));
     using CT = CaptureTool;
-    for (auto toolType : { CT::TYPE_ACCEPT, CT::TYPE_SAVE, CT::TYPE_COPY }) {
+    for (auto toolType : { CT::TYPE_ACCEPT,
+                           CT::TYPE_SAVE,
+                           CT::TYPE_COPY,
+                           CT::TYPE_OCR }) {
         if (!m_tools.contains(toolType)) {
             continue;
         }
@@ -1460,7 +1465,11 @@ void CaptureWidget::handleToolSignal(CaptureTool::Request r)
             }
             break;
         case CaptureTool::REQ_ADD_CHILD_WIDGET:
-            if (!m_activeTool) {
+        {
+            CaptureTool* tool =
+              m_activeTool ? m_activeTool.data()
+                           : qobject_cast<CaptureTool*>(sender());
+            if (!tool) {
                 break;
             }
             if (m_toolWidget) {
@@ -1468,7 +1477,7 @@ void CaptureWidget::handleToolSignal(CaptureTool::Request r)
                 delete m_toolWidget;
                 m_toolWidget = nullptr;
             }
-            m_toolWidget = m_activeTool->widget();
+            m_toolWidget = tool->widget();
             if (m_toolWidget) {
                 makeChild(m_toolWidget);
                 m_toolWidget->move(m_context.mousePos);
@@ -1476,15 +1485,28 @@ void CaptureWidget::handleToolSignal(CaptureTool::Request r)
                 m_toolWidget->setFocus();
             }
             break;
+        }
         case CaptureTool::REQ_ADD_EXTERNAL_WIDGETS:
-            if (!m_activeTool) {
+        {
+            CaptureTool* tool =
+              m_activeTool ? m_activeTool.data()
+                           : qobject_cast<CaptureTool*>(sender());
+            if (!tool) {
                 break;
             } else {
-                QWidget* w = m_activeTool->widget();
+                QWidget* w = tool->widget();
                 w->setAttribute(Qt::WA_DeleteOnClose);
                 w->activateWindow();
                 w->show();
                 Flameshot::instance()->setExternalWidget(true);
+            }
+            break;
+        }
+        case CaptureTool::REQ_CLOSE_GUI_WITHOUT_CAPTURE:
+            m_closeWithoutCapture = true;
+            close();
+            if (Flameshot::origin() == Flameshot::CLI) {
+                qApp->exit(E_OK);
             }
             break;
         case CaptureTool::REQ_INCREASE_TOOL_SIZE:

@@ -178,6 +178,7 @@ private:
     bool m_newSelection;
     bool m_movingSelection;
     bool m_captureDone;
+    bool m_closeWithoutCapture;
     bool m_previewEnabled;
     bool m_adjustmentButtonPressed;
     bool m_configError;
