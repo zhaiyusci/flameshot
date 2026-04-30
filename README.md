@@ -237,20 +237,23 @@ install PaddleOCR with its optional extras, for example
 Flameshot looks for the OCR Python executable in these places, in order:
 
 - `FLAMESHOT_PADDLEOCR_PYTHON`, if set.
+- `paddleOcrPython` in the Flameshot config file, if set.
 - `.venv-paddleocr/bin/python` near the source or build directory.
 - `$HOME/.local/share/flameshot-ocr-backends/paddleocr/bin/python`.
 - `python3` or `python` from `PATH`.
 
 For a packaged or installed build, setting the path explicitly is the most
-predictable option:
+predictable option. Put the backend path in `flameshot.ini`:
 
-```shell
-export FLAMESHOT_PADDLEOCR_PYTHON="$HOME/.local/share/flameshot-ocr-backends/paddleocr/bin/python"
-export FLAMESHOT_PADDLEOCR_CACHE="$HOME/.cache/flameshot/paddlex"
+```ini
+[General]
+paddleOcrPython=/home/user/.local/share/flameshot-ocr-backends/paddleocr/bin/python
+paddleOcrCache=/home/user/.cache/flameshot/paddlex
 ```
 
 The model cache defaults to `$HOME/.cache/flameshot/paddlex` when no nearby
-`.cache/paddlex` directory exists. You can force a cache location with
+`.cache/paddlex` directory exists. You can force a cache location with the
+`paddleOcrCache` config key, or temporarily override it with
 `FLAMESHOT_PADDLEOCR_CACHE`.
 
 To enable Markdown and formula preview, build Flameshot with Qt WebEngine
@@ -266,8 +269,10 @@ export FLAMESHOT_KATEX_DIST=/path/to/katex/dist
 
 Useful OCR environment variables:
 
-- `FLAMESHOT_PADDLEOCR_PYTHON`: Python executable that can import `paddleocr`.
-- `FLAMESHOT_PADDLEOCR_CACHE`: PaddleX/PaddleOCR model cache directory.
+- `FLAMESHOT_PADDLEOCR_PYTHON`: temporary override for the Python executable
+  that can import `paddleocr`.
+- `FLAMESHOT_PADDLEOCR_CACHE`: temporary override for the PaddleX/PaddleOCR
+  model cache directory.
 - `FLAMESHOT_PADDLEOCR_TIMEOUT_MS`: per-request timeout, default `300000`.
 - `FLAMESHOT_PADDLEOCR_IDLE_TIMEOUT_MS`: worker idle shutdown timeout, default
   `1800000`.

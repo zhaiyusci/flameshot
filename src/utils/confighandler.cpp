@@ -134,6 +134,8 @@ static QMap<class QString, QSharedPointer<ValueHandler>>
     OPTION("jpegQuality"                 , BoundedInt        ( 0,100,75      )),
     OPTION("reverseArrow"                ,Bool               ( false         )),
     OPTION("insecurePixelate"            ,Bool               ( false         )),
+    OPTION("paddleOcrPython"             ,String             ( ""            )),
+    OPTION("paddleOcrCache"              ,String             ( ""            )),
 #if defined(Q_OS_WIN)
     // Not visible on settings dialog
     OPTION("ignorePrntScrForcesSnipping" ,Bool               ( false         )),

@@ -5,6 +5,7 @@
 
 #include "tools/ocr/ocrpreprocessor.h"
 #include "utils/abstractlogger.h"
+#include "utils/confighandler.h"
 
 #include <algorithm>
 #include <array>
@@ -980,6 +981,15 @@ QString paddleOcrPython()
         return configured;
     }
 
+    const QString configuredInRc = ConfigHandler().paddleOcrPython().trimmed();
+    if (!configuredInRc.isEmpty()) {
+        const QString executable = executablePathIfUsable(configuredInRc);
+        if (!executable.isEmpty()) {
+            return executable;
+        }
+        return configuredInRc;
+    }
+
     const QDir appDir(QCoreApplication::applicationDirPath());
     const QDir currentDir(QDir::currentPath());
     const QStringList candidates = {
@@ -1014,6 +1024,11 @@ QString paddleOcrCacheHome()
         .trimmed();
     if (!configured.isEmpty()) {
         return configured;
+    }
+
+    const QString configuredInRc = ConfigHandler().paddleOcrCache().trimmed();
+    if (!configuredInRc.isEmpty()) {
+        return configuredInRc;
     }
 
     const QDir appDir(QCoreApplication::applicationDirPath());
