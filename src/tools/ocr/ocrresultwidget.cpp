@@ -23,6 +23,7 @@
 #include <QRegularExpression>
 #include <QScrollArea>
 #include <QSize>
+#include <QSizePolicy>
 #include <QSplitter>
 #include <QStandardPaths>
 #include <QSyntaxHighlighter>
@@ -101,7 +102,9 @@ QString resolveKatexDist(QString path)
 QWidget* labeledPane(const QString& title, QWidget* content, QWidget* parent)
 {
     auto* pane = new QWidget(parent);
-    pane->setMinimumWidth(220);
+    pane->setMinimumWidth(240);
+    pane->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    content->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 
     auto* titleLabel = new QLabel(title, pane);
     titleLabel->setStyleSheet(QStringLiteral("font-weight: 600;"));
@@ -109,7 +112,7 @@ QWidget* labeledPane(const QString& title, QWidget* content, QWidget* parent)
     auto* layout = new QVBoxLayout(pane);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->addWidget(titleLabel);
-    layout->addWidget(content);
+    layout->addWidget(content, 1);
     return pane;
 }
 
@@ -329,6 +332,8 @@ OcrResultWidget::OcrResultWidget(const QPixmap& capture,
       QLabel
 #endif
       (this);
+    m_preview->setMinimumSize(QSize(240, 240));
+    m_preview->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 #if !defined(FLAMESHOT_HAVE_QT_WEBENGINE)
     m_preview->setAlignment(Qt::AlignCenter);
     m_preview->setWordWrap(true);
@@ -354,7 +359,9 @@ OcrResultWidget::OcrResultWidget(const QPixmap& capture,
             auto* imageScroll = new QScrollArea(this);
             imageScroll->setWidget(imageLabel);
             imageScroll->setWidgetResizable(true);
-            imageScroll->setMinimumWidth(260);
+            imageScroll->setMinimumWidth(240);
+            imageScroll->setSizePolicy(QSizePolicy::Expanding,
+                                       QSizePolicy::Expanding);
             splitter->addWidget(labeledPane(tr("Original"), imageScroll, this));
         }
         splitter->addWidget(labeledPane(tr("Markdown"), m_editor, this));
@@ -365,6 +372,10 @@ OcrResultWidget::OcrResultWidget(const QPixmap& capture,
         }
         splitter->setSizes(capture.isNull() ? QList<int>{ 440, 440 }
                                             : QList<int>{ 360, 360, 360 });
+        QTimer::singleShot(0, splitter, [splitter, hasCapture = !capture.isNull()]() {
+            splitter->setSizes(hasCapture ? QList<int>{ 1, 1, 1 }
+                                          : QList<int>{ 1, 1 });
+        });
 
         auto* layout = new QVBoxLayout(this);
         layout->addWidget(splitter);
@@ -396,7 +407,9 @@ OcrResultWidget::OcrResultWidget(const QPixmap& capture,
     auto* imageScroll = new QScrollArea(this);
     imageScroll->setWidget(imageLabel);
     imageScroll->setWidgetResizable(true);
-    imageScroll->setMinimumWidth(260);
+    imageScroll->setMinimumWidth(240);
+    imageScroll->setSizePolicy(QSizePolicy::Expanding,
+                               QSizePolicy::Expanding);
 
     m_latexEditor = new QPlainTextEdit(this);
     m_latexEditor->setPlainText(latex);
@@ -426,6 +439,9 @@ OcrResultWidget::OcrResultWidget(const QPixmap& capture,
     splitter->setStretchFactor(1, 1);
     splitter->setStretchFactor(2, 1);
     splitter->setSizes({ 360, 360, 360 });
+    QTimer::singleShot(0, splitter, [splitter]() {
+        splitter->setSizes({ 1, 1, 1 });
+    });
 
     auto* copyLatexButton = new QPushButton(tr("Copy LaTeX"), this);
     buttonLayout->addWidget(copyLatexButton);
@@ -620,19 +636,21 @@ QString OcrResultWidget::markdownHtml(const QString& markdown) const
 html, body {
   margin: 0;
   min-height: 100%;
+  width: 100%;
   background: #ffffff;
   color: #111111;
 }
 body {
   box-sizing: border-box;
-  padding: 22px;
+  padding: 16px 18px;
   overflow: auto;
   font: 15px/1.55 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
     sans-serif;
 }
 #preview {
-  max-width: 980px;
-  margin: 0 auto;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
 }
 p {
   margin: 0 0 0.85rem;
@@ -666,6 +684,8 @@ code {
   margin: 1rem 0;
   overflow-x: auto;
   overflow-y: hidden;
+  width: 100%;
+  text-align: center;
 }
 .math-inline {
   display: inline-block;

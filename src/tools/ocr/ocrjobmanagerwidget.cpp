@@ -20,6 +20,7 @@
 #include <QProcess>
 #include <QProcessEnvironment>
 #include <QPushButton>
+#include <QSizePolicy>
 #include <QSplitter>
 #include <QStandardPaths>
 #include <QTableWidget>
@@ -134,6 +135,23 @@ QString npmGlobalKatexDist()
       .filePath(QStringLiteral("katex/dist"));
 }
 
+QWidget* labeledPane(const QString& title, QWidget* content, QWidget* parent)
+{
+    auto* pane = new QWidget(parent);
+    pane->setMinimumSize(220, 160);
+    pane->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    content->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+
+    auto* titleLabel = new QLabel(title, pane);
+    titleLabel->setStyleSheet(QStringLiteral("font-weight: 600;"));
+
+    auto* layout = new QVBoxLayout(pane);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->addWidget(titleLabel);
+    layout->addWidget(content, 1);
+    return pane;
+}
+
 bool suppressOcrResultPopup()
 {
     const QString value =
@@ -183,9 +201,12 @@ OcrJobManagerWidget::OcrJobManagerWidget(QWidget* parent)
     m_imagePreview->setMinimumHeight(160);
     m_imagePreview->setStyleSheet(QStringLiteral(
       "QLabel { background: #f6f8fa; border: 1px solid #d0d7de; }"));
+    m_imagePreview->setSizePolicy(QSizePolicy::Expanding,
+                                  QSizePolicy::Expanding);
 
     m_resultPreview->setReadOnly(true);
     m_resultPreview->setLineWrapMode(QPlainTextEdit::WidgetWidth);
+    m_resultPreview->setMinimumSize(220, 180);
 
 #if !defined(FLAMESHOT_HAVE_QT_WEBENGINE)
     m_latexPreview->setAlignment(Qt::AlignCenter);
@@ -193,13 +214,25 @@ OcrJobManagerWidget::OcrJobManagerWidget(QWidget* parent)
     m_latexPreview->setTextInteractionFlags(Qt::TextSelectableByMouse);
 #endif
     m_latexPreview->setMinimumHeight(180);
+    m_latexPreview->setMinimumWidth(220);
+    m_latexPreview->setSizePolicy(QSizePolicy::Expanding,
+                                  QSizePolicy::Expanding);
 
-    auto* details = new QWidget(this);
-    auto* detailsLayout = new QVBoxLayout(details);
-    detailsLayout->setContentsMargins(0, 0, 0, 0);
-    detailsLayout->addWidget(m_imagePreview);
-    detailsLayout->addWidget(m_resultPreview);
-    detailsLayout->addWidget(m_latexPreview);
+    auto* sourcePreviewSplitter = new QSplitter(Qt::Horizontal, this);
+    sourcePreviewSplitter->addWidget(labeledPane(tr("Markdown"), m_resultPreview, this));
+    sourcePreviewSplitter->addWidget(labeledPane(tr("Preview"), m_latexPreview, this));
+    sourcePreviewSplitter->setChildrenCollapsible(false);
+    sourcePreviewSplitter->setStretchFactor(0, 1);
+    sourcePreviewSplitter->setStretchFactor(1, 1);
+    sourcePreviewSplitter->setSizes({ 1, 1 });
+
+    auto* details = new QSplitter(Qt::Vertical, this);
+    details->addWidget(labeledPane(tr("Original"), m_imagePreview, this));
+    details->addWidget(sourcePreviewSplitter);
+    details->setChildrenCollapsible(false);
+    details->setStretchFactor(0, 1);
+    details->setStretchFactor(1, 2);
+    details->setSizes({ 1, 2 });
 
     auto* splitter = new QSplitter(Qt::Horizontal, this);
     splitter->addWidget(m_table);
@@ -592,15 +625,21 @@ QString OcrJobManagerWidget::markdownHtml(const QString& markdown) const
 html, body {
   margin: 0;
   min-height: 100%;
+  width: 100%;
   background: #ffffff;
   color: #111111;
 }
 body {
   box-sizing: border-box;
-  padding: 16px;
+  padding: 14px 16px;
   overflow: auto;
   font: 14px/1.5 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
     sans-serif;
+}
+#preview {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
 }
 p {
   margin: 0 0 0.75rem;
@@ -634,6 +673,8 @@ code {
   margin: 0.85rem 0;
   overflow-x: auto;
   overflow-y: hidden;
+  width: 100%;
+  text-align: center;
 }
 .math-inline {
   display: inline-block;
