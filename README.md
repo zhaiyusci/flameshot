@@ -60,6 +60,7 @@
   - [CLI configuration](#cli-configuration)
   - [Config file](#config-file)
   - [OCR](#ocr)
+  - [Barcode and 2D code recognition](#barcode-and-2d-code-recognition)
 - [Keyboard Shortcuts](#keyboard-shortcuts)
   - [Local](#local)
   - [Global](#global)
@@ -97,6 +98,7 @@
 - In-app screenshot editing.
 - DBus interface.
 - OCR to editable Markdown with formula recognition.
+- Barcode and 2D code recognition.
 - Upload to Imgur.
 
 ## Usage
@@ -203,15 +205,90 @@ editable result window. Results are returned as Markdown; formulas delimited as
 `$$...$$`, `\[...\]`, `$...$`, or `\(...\)` are rendered in the preview with
 KaTeX when Qt WebEngine and local KaTeX assets are available.
 
-The current OCR backend uses PaddleOCR's `PPStructureV3` pipeline with formula
-recognition enabled. The first OCR request can take longer because PaddleOCR may
-download its inference models. By default Flameshot uses:
+The OCR backend is selected by `ocrBackend`. The default value, `auto`, prefers
+the Marker/Surya backend when it is installed, then falls back to PaddleOCR.
+Use `ocrBackend=marker` to force Marker, or `ocrBackend=paddleocr` to force
+PaddleOCR.
+
+Marker/Surya is the preferred local backend for mixed Markdown with formulas.
+It returns Markdown directly, including `$...$` and `$$...$$` formula spans.
+For small or narrow captures, Flameshot also runs a forced `Equation` pass and
+keeps it as another result page; this avoids cases where the document-layout
+route misclassifies a single formula as a table. On CPU, short captures usually
+finish in a few seconds, while full-page document screenshots can take around
+100 seconds.
+
+To deploy Marker in a local Python virtual environment:
+
+```shell
+python3 -m venv ~/.local/share/flameshot-ocr-backends/marker-py311
+. ~/.local/share/flameshot-ocr-backends/marker-py311/bin/activate
+python -m pip install --upgrade pip
+
+# Install CPU PyTorch first to avoid pulling CUDA wheels on CPU-only systems.
+python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+python -m pip install marker-pdf
+```
+
+You can verify the Marker environment before launching Flameshot:
+
+```shell
+. ~/.local/share/flameshot-ocr-backends/marker-py311/bin/activate
+python -c "from marker.models import create_model_dict; from marker.converters.pdf import PdfConverter"
+```
+
+Flameshot looks for Marker in these places, in order:
+
+- `FLAMESHOT_MARKER_OCR_PYTHON`, if set.
+- `markerOcrPython` in the Flameshot config file, if set.
+- `marker_single` from `PATH`.
+- `$HOME/.local/share/flameshot-ocr-backends/marker-py311/bin/marker_single`.
+- `$HOME/.local/share/flameshot-ocr-backends/marker/bin/marker_single`.
+
+Marker model files are stored in `MODEL_CACHE_DIR`. Flameshot sets that to
+`markerOcrCache`, `FLAMESHOT_MARKER_OCR_CACHE`, a nearby
+`.cache/datalab/models` directory, or
+`$HOME/.cache/flameshot/datalab/models`. The current local test cache is about
+3.3 GiB.
+
+Marker CPU inference uses `markerOcrThreads`, defaulting to 8. Local benchmarks
+on a 24-thread desktop CPU found 8 threads faster than 16 for common small OCR
+captures; 16 threads mostly increased CPU contention. Use the config key or
+`FLAMESHOT_MARKER_OCR_THREADS` to override it for a specific machine. Marker
+Markdown is the default OCR route. The result window includes a Try Formula Route
+button for cases where Markdown missed or mangled a standalone formula; that
+button runs Marker's forced `Equation` route on demand and adds it as another
+editable result page.
+
+Automatic formula fallback is disabled by default. If
+`FLAMESHOT_MARKER_OCR_FORMULA_FALLBACK` is set to `auto` or `always`, small
+captures can run the Markdown and Equation routes in parallel by enabling
+`markerOcrParallelSmallImages`. During that speculative pass, Flameshot uses
+`markerOcrParallelThreads`, defaulting to 4, so a typical small-image layout is
+roughly 4 threads for Markdown plus 4 threads for Equation.
+
+For a packaged or installed build, setting the Marker path explicitly is the
+most predictable option:
+
+```ini
+[General]
+ocrBackend=marker
+markerOcrPython=/home/user/.local/share/flameshot-ocr-backends/marker-py311/bin/python
+markerOcrCache=/home/user/.cache/flameshot/datalab/models
+markerOcrThreads=8
+markerOcrParallelSmallImages=false
+markerOcrParallelThreads=4
+```
+
+PaddleOCR remains supported as a faster fallback backend. It uses PaddleOCR's
+`PPStructureV3` pipeline with formula recognition enabled. By default Flameshot
+uses:
 
 - `PP-DocLayout-M` for layout detection.
 - `PP-OCRv5_mobile_det` and `PP-OCRv5_mobile_rec` for text OCR.
 - `PP-FormulaNet_plus-S` for formula recognition.
 
-To deploy the backend in a local Python virtual environment:
+To deploy PaddleOCR in a local Python virtual environment:
 
 ```shell
 python3 -m venv .venv-paddleocr
@@ -224,7 +301,7 @@ python -m pip install paddlepaddle==3.2.0 -i https://www.paddlepaddle.org.cn/pac
 python -m pip install paddleocr
 ```
 
-You can verify the backend environment before launching Flameshot:
+You can verify the PaddleOCR environment before launching Flameshot:
 
 ```shell
 . .venv-paddleocr/bin/activate
@@ -235,7 +312,7 @@ If the import fails because optional document parsing dependencies are missing,
 install PaddleOCR with its optional extras, for example
 `python -m pip install "paddleocr[all]"`.
 
-Flameshot looks for the OCR Python executable in these places, in order:
+Flameshot looks for the PaddleOCR Python executable in these places, in order:
 
 - `FLAMESHOT_PADDLEOCR_PYTHON`, if set.
 - `paddleOcrPython` in the Flameshot config file, if set.
@@ -257,6 +334,35 @@ The model cache defaults to `$HOME/.cache/flameshot/paddlex` when no nearby
 `paddleOcrCache` config key, or temporarily override it with
 `FLAMESHOT_PADDLEOCR_CACHE`.
 
+Implementation notes for PaddleOCR integration:
+
+- Use `PPStructureV3` as the primary route for mixed text and formula captures.
+  Create it with `use_formula_recognition=True` and `format_block_content=True`.
+- Convert structure results with PaddleOCR's Markdown exporter:
+  `result._to_markdown(pretty=False, show_formula_number=False)`, then read
+  `markdown_texts`. `pretty=False` keeps the result as editable plain Markdown;
+  `pretty=True` may add HTML layout fragments that are not suitable for the
+  Flameshot editor.
+- Do not post-process PaddleOCR Markdown by stripping HTML/image-looking tokens
+  with regular expressions. Formula and layout output is already encoded in the
+  Markdown result, and destructive cleanup can remove formula content.
+- If `PPStructureV3` classifies a formula area as an `image` or `figure` block,
+  do not discard it as an image. Check `formula_res_list`: PaddleOCR often still
+  reports the formula LaTeX with `dt_polys` coordinates. When those coordinates
+  overlap the image/figure block, replace only that Markdown image placeholder
+  with `$$...$$`.
+- If `formula_res_list` is empty but an `image` or `figure` block looks like a
+  formula, run `FormulaRecognitionPipeline` on that block crop, not on the whole
+  capture. Whole-capture formula recognition can absorb headings or surrounding
+  text into the LaTeX result.
+- Formula OCR output is embedded in the Markdown text as `$...$`, `$$...$$`,
+  `\(...\)`, or `\[...\]`. The `latex` field in Flameshot's result object is
+  intentionally empty for this route; KaTeX preview should render formulas from
+  the Markdown source.
+- Flameshot also runs a plain `PaddleOCR` text route as a fallback. If the
+  structure Markdown contains formula blocks or math delimiters, prefer the
+  structure Markdown result and keep the plain text result as the fallback page.
+
 To enable Markdown and formula preview, build Flameshot with Qt WebEngine
 available and install KaTeX locally. Flameshot resolves KaTeX from
 `FLAMESHOT_KATEX_DIST`, from an installed npm package, or from common system
@@ -270,6 +376,25 @@ export FLAMESHOT_KATEX_DIST=/path/to/katex/dist
 
 Useful OCR environment variables:
 
+- `FLAMESHOT_OCR_BACKEND`: temporary override for `ocrBackend`; supported
+  values are `auto`, `marker`, and `paddleocr`.
+- `FLAMESHOT_MARKER_OCR_PYTHON`: temporary override for the Python executable
+  that can import `marker`.
+- `FLAMESHOT_MARKER_OCR_CACHE`: temporary override for the Marker/Surya model
+  cache directory.
+- `FLAMESHOT_MARKER_OCR_THREADS`: temporary override for Marker/Surya CPU
+  inference threads; default `8`.
+- `FLAMESHOT_MARKER_OCR_PARALLEL_SMALL_IMAGES`: set to `1`, `true`, `yes`, or
+  `on` to enable small-image Markdown/Equation speculative parallelism when
+  formula fallback is enabled; default disabled.
+- `FLAMESHOT_MARKER_OCR_PARALLEL_THREADS`: temporary override for the CPU
+  threads used by each small-image parallel route; default `4`.
+- `FLAMESHOT_MARKER_OCR_TIMEOUT_MS`: per-request timeout, default `300000`.
+- `FLAMESHOT_MARKER_OCR_IDLE_TIMEOUT_MS`: worker idle shutdown timeout, default
+  `1800000`.
+- `FLAMESHOT_MARKER_OCR_FORMULA_FALLBACK`: `auto`, `always`, or `off`; default
+  `off`. The result window's Try Formula Route button is the normal manual
+  fallback path.
 - `FLAMESHOT_PADDLEOCR_PYTHON`: temporary override for the Python executable
   that can import `paddleocr`.
 - `FLAMESHOT_PADDLEOCR_CACHE`: temporary override for the PaddleX/PaddleOCR
@@ -281,6 +406,29 @@ Useful OCR environment variables:
   `FLAMESHOT_PADDLEOCR_TEXT_REC_MODEL`, and
   `FLAMESHOT_PADDLEOCR_FORMULA_MODEL`: override PaddleOCR model names.
 - `FLAMESHOT_KATEX_DIST`: KaTeX package or `dist` directory for preview.
+
+### Barcode and 2D code recognition
+
+The Barcode tool sends the selected capture to the same background task manager
+used by OCR and closes the capture overlay immediately. The editable result area
+contains only decoded text, one symbol per line. The detected formats are shown
+separately in the result pane title.
+
+Recognition uses ZXing-C++ and asks it to scan all supported readable formats,
+including QR Code, Micro QR Code, rMQR, Data Matrix, Aztec, PDF417, MaxiCode,
+EAN/UPC, Code 39, Code 93, Code 128, Codabar, ITF, and DataBar variants.
+Flameshot first scans the original capture, then tries conservative fallback
+images: quiet-zone padding, nearest-neighbor upscaling for small captures,
+contrast stretching, and an inverted candidate for light codes on dark
+backgrounds.
+
+For non-GUI testing, a development helper is available:
+
+```shell
+flameshot barcode-scan input.png
+```
+
+The helper prints one decoded symbol per line as `FORMAT<TAB>TEXT`.
 
 ## Keyboard shortcuts
 
@@ -521,6 +669,10 @@ Also you can open and build/debug the project in a C++ IDE. For example, in Qt C
 - Qt Image Formats - for additional export image formats (e.g. tiff, webp, and more)
 - Qt WebEngine Widgets - for OCR Markdown/KaTeX preview
 - Node.js/npm or a system KaTeX package - for OCR formula preview assets
+- zxing-cpp - for barcode and 2D code recognition. If no system package is
+  found, CMake fetches a bundled copy by default. Set `USE_BUNDLED_ZXING=OFF`
+  to avoid fetching; barcode recognition will be unavailable if no system
+  package is found.
 
 #### Debian
 

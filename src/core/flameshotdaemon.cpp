@@ -14,6 +14,7 @@
 #include <QIODevice>
 #include <QPixmap>
 #include <QRect>
+#include <QTimer>
 
 #if !(defined(Q_OS_MACOS) || defined(Q_OS_WIN))
 #include <QDBusConnection>
@@ -26,7 +27,6 @@
 #include <QJsonObject>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
-#include <QTimer>
 #include <QUrl>
 #endif
 
@@ -39,6 +39,10 @@
 #ifdef Q_OS_WIN
 #include "core/globalshortcutfilter.h"
 #endif
+
+namespace {
+constexpr int IdleQuitDelayMs = 5000;
+}
 
 /**
  * @brief A way of accessing the flameshot daemon both from the daemon itself,
@@ -70,6 +74,7 @@ FlameshotDaemon::FlameshotDaemon()
   , m_clipboardSignalBlocked(false)
   , m_trayIcon(nullptr)
   , m_ocrJobManager(nullptr)
+  , m_idleQuitTimer(new QTimer(this))
 #if !defined(DISABLE_UPDATE_CHECKER)
   , m_appLatestVersion(QStringLiteral(APP_VERSION).replace("v", ""))
   , m_showManualCheckAppUpdateStatus(false)
@@ -86,6 +91,14 @@ FlameshotDaemon::FlameshotDaemon()
           quitIfIdle();
       });
 
+    m_idleQuitTimer->setSingleShot(true);
+    m_idleQuitTimer->setInterval(IdleQuitDelayMs);
+    connect(m_idleQuitTimer, &QTimer::timeout, this, [this]() {
+        if (!m_persist && isIdle()) {
+            qApp->exit(E_OK);
+        }
+    });
+
     m_persist = !ConfigHandler().autoCloseIdleDaemon();
     connect(ConfigHandler::getInstance(),
             &ConfigHandler::fileChanged,
@@ -94,6 +107,11 @@ FlameshotDaemon::FlameshotDaemon()
                 ConfigHandler config;
                 enableTrayIcon(!config.disabledTrayIcon());
                 m_persist = !config.autoCloseIdleDaemon();
+                if (m_persist) {
+                    m_idleQuitTimer->stop();
+                } else {
+                    quitIfIdle();
+                }
             });
 
 #if !defined(DISABLE_UPDATE_CHECKER)
@@ -211,10 +229,9 @@ void FlameshotDaemon::startOcrTask(const QPixmap& capture, int kind)
  */
 bool FlameshotDaemon::isThisInstanceHostingWidgets()
 {
-    return instance() &&
-           (!instance()->m_widgets.isEmpty() ||
-            (instance()->m_ocrJobManager &&
-             instance()->m_ocrJobManager->runningJobCount() > 0));
+    return instance() && (!instance()->m_widgets.isEmpty() ||
+                          (instance()->m_ocrJobManager &&
+                           instance()->m_ocrJobManager->runningJobCount() > 0));
 }
 
 void FlameshotDaemon::sendTrayNotification(const QString& text,
@@ -321,15 +338,27 @@ FlameshotDaemon* FlameshotDaemon::instance()
  * @brief Quit the daemon if it has nothing to do and the 'persist' flag is not
  * set.
  */
+bool FlameshotDaemon::isIdle() const
+{
+    const bool hasOcrJobs =
+      m_ocrJobManager && m_ocrJobManager->runningJobCount() > 0;
+    return !m_hostingClipboard && m_widgets.isEmpty() && !hasOcrJobs;
+}
+
 void FlameshotDaemon::quitIfIdle()
 {
     if (m_persist) {
+        m_idleQuitTimer->stop();
         return;
     }
-    const bool hasOcrJobs =
-      m_ocrJobManager && m_ocrJobManager->runningJobCount() > 0;
-    if (!m_hostingClipboard && m_widgets.isEmpty() && !hasOcrJobs) {
-        qApp->exit(E_OK);
+
+    if (!isIdle()) {
+        m_idleQuitTimer->stop();
+        return;
+    }
+
+    if (!m_idleQuitTimer->isActive()) {
+        m_idleQuitTimer->start();
     }
 }
 
@@ -337,6 +366,7 @@ void FlameshotDaemon::quitIfIdle()
 
 void FlameshotDaemon::attachPin(const QPixmap& pixmap, QRect geometry)
 {
+    m_idleQuitTimer->stop();
     auto* pinWidget = new PinWidget(pixmap, geometry);
     m_widgets.append(pinWidget);
     connect(pinWidget, &QObject::destroyed, this, [=, this]() {
@@ -350,6 +380,7 @@ void FlameshotDaemon::attachPin(const QPixmap& pixmap, QRect geometry)
 
 void FlameshotDaemon::attachScreenshotToClipboard(const QPixmap& pixmap)
 {
+    m_idleQuitTimer->stop();
     m_hostingClipboard = true;
     QClipboard* clipboard = QApplication::clipboard();
     clipboard->blockSignals(true);
@@ -386,6 +417,7 @@ void FlameshotDaemon::attachScreenshotToClipboard(const QByteArray& screenshot)
 void FlameshotDaemon::attachTextToClipboard(const QString& text,
                                             const QString& notification)
 {
+    m_idleQuitTimer->stop();
     // Must send notification before clipboard modification on linux
     if (!notification.isEmpty()) {
         AbstractLogger::info() << notification;
@@ -406,10 +438,22 @@ void FlameshotDaemon::attachOcrTask(const QPixmap& capture,
                                     int kind,
                                     const QString& requestId)
 {
-    auto taskKind =
-      kind == static_cast<int>(OcrTaskWidget::Kind::Latex)
-        ? OcrTaskWidget::Kind::Latex
-        : OcrTaskWidget::Kind::Text;
+    m_idleQuitTimer->stop();
+    auto taskKind = kind == static_cast<int>(OcrTaskWidget::Kind::Barcode)
+                      ? OcrTaskWidget::Kind::Barcode
+                      : (kind == static_cast<int>(OcrTaskWidget::Kind::Latex)
+                           ? OcrTaskWidget::Kind::Latex
+                           : OcrTaskWidget::Kind::Text);
+    const QString taskName =
+      taskKind == OcrTaskWidget::Kind::Barcode
+        ? QStringLiteral("barcode")
+        : (taskKind == OcrTaskWidget::Kind::Latex ? QStringLiteral("latex")
+                                                  : QStringLiteral("ocr"));
+    AbstractLogger::info(AbstractLogger::Stderr)
+      << tr("Background task received: kind=%1, size=%2x%3.")
+           .arg(taskName,
+                QString::number(capture.width()),
+                QString::number(capture.height()));
     ensureOcrJobManager()->addTask(taskKind, capture, requestId);
 }
 
@@ -461,10 +505,10 @@ void FlameshotDaemon::sendOcrTaskFinished(const QString& requestId,
                                           const QString& preparedImagePath)
 {
 #if !(defined(Q_OS_MACOS) || defined(Q_OS_WIN))
-    QDBusMessage signal = QDBusMessage::createSignal(
-      QStringLiteral("/"),
-      QStringLiteral("org.flameshot.Flameshot"),
-      QStringLiteral("ocrTaskFinished"));
+    QDBusMessage signal =
+      QDBusMessage::createSignal(QStringLiteral("/"),
+                                 QStringLiteral("org.flameshot.Flameshot"),
+                                 QStringLiteral("ocrTaskFinished"));
     signal << requestId << kind << ok << result << error << preparedImagePath;
     QDBusConnection::sessionBus().send(signal);
 #else
@@ -565,7 +609,12 @@ void FlameshotDaemon::call(const QDBusMessage& m)
 {
     QDBusConnection sessionBus = QDBusConnection::sessionBus();
     checkDBusConnection(sessionBus);
-    sessionBus.call(m);
+    const QDBusMessage reply = sessionBus.call(m);
+    if (reply.type() == QDBusMessage::ErrorMessage) {
+        AbstractLogger::error()
+          << tr("DBus call failed: %1 %2")
+               .arg(reply.errorName(), reply.errorMessage());
+    }
 }
 #endif
 
@@ -628,7 +677,8 @@ void FlameshotDaemon::messageReceivedFromSecondaryInstance(
             stream >> requestId;
         }
         if (!capture.isNull()) {
-            FlameshotDaemon::instance()->attachOcrTask(capture, kind, requestId);
+            FlameshotDaemon::instance()->attachOcrTask(
+              capture, kind, requestId);
         } else {
             qWarning() << "Received \"startOcrTask\" from second instance, but "
                           "pixmap is empty!";

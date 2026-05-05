@@ -5,8 +5,8 @@
 
 #include "tools/ocr/ocrtaskwidget.h"
 
-#include <QPointer>
 #include <QPixmap>
+#include <QPointer>
 #include <QWidget>
 
 class QLabel;
@@ -50,6 +50,13 @@ private:
         QString result;
         QString text;
         QString latex;
+        QString fallbackText;
+        QString fallbackLatex;
+        QString resultInfo;
+        QString fallbackInfo;
+        QString extraText;
+        QString extraLatex;
+        QString extraInfo;
         QString error;
         QString requestId;
         QString preparedImagePath;
@@ -70,6 +77,8 @@ private:
     QString markdownHtml(const QString& markdown) const;
     QString findKatexDist() const;
     QString jobResultText(const Job& job) const;
+    QString jobFallbackText(const Job& job) const;
+    QString resultPaneTitle(const Job& job) const;
     int selectedJobIndex() const;
     int jobIndexById(int id) const;
     QString jobTypeText(const Job& job) const;
@@ -83,6 +92,7 @@ private:
 
     QTableWidget* m_table;
     QLabel* m_imagePreview;
+    QLabel* m_resultPaneTitle;
     QPlainTextEdit* m_resultPreview;
 #if defined(FLAMESHOT_HAVE_QT_WEBENGINE)
     QWebEngineView* m_latexPreview;

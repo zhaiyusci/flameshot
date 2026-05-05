@@ -135,7 +135,7 @@ void TrayIcon::initMenu()
             &QAction::triggered,
             Flameshot::instance(),
             &Flameshot::launcher);
-    m_ocrJobsAction = new QAction(tr("OCR &Jobs"), this);
+    m_ocrJobsAction = new QAction(tr("Background &Tasks"), this);
     connect(m_ocrJobsAction,
             &QAction::triggered,
             FlameshotDaemon::instance(),

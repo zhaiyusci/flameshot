@@ -15,6 +15,7 @@
 #include "core/capturerequest.h"
 #include "core/flameshot.h"
 #include "core/flameshotdaemon.h"
+#include "tools/barcode/barcodereader.h"
 #include "tools/ocr/ocrpreprocessor.h"
 #include "utils/abstractlogger.h"
 #include "utils/confighandler.h"
@@ -204,9 +205,8 @@ void reinitializeAsQApplication(int& argc,
 int runOcrPreprocessCommand(const QStringList& arguments)
 {
     if (arguments.size() != 5) {
-        QTextStream(stderr)
-          << QStringLiteral(
-               "Usage: flameshot ocr-preprocess text|latex input.png output.png\n");
+        QTextStream(stderr) << QStringLiteral(
+          "Usage: flameshot ocr-preprocess text|latex input.png output.png\n");
         return 2;
     }
 
@@ -238,6 +238,33 @@ int runOcrPreprocessCommand(const QStringList& arguments)
         return 1;
     }
 
+    return 0;
+}
+
+int runBarcodeScanCommand(const QStringList& arguments)
+{
+    if (arguments.size() != 3) {
+        QTextStream(stderr)
+          << QStringLiteral("Usage: flameshot barcode-scan input.png\n");
+        return 2;
+    }
+
+    const QString inputPath = arguments.at(2);
+    QImage input(inputPath);
+    if (input.isNull()) {
+        QTextStream(stderr)
+          << QStringLiteral("Unable to read image: %1\n").arg(inputPath);
+        return 1;
+    }
+
+    const BarcodeReader::ScanResult scan = BarcodeReader::scanImage(input);
+    const QString result = BarcodeReader::formatResults(scan.results);
+    if (result.isEmpty()) {
+        QTextStream(stderr) << scan.error << QLatin1Char('\n');
+        return 1;
+    }
+
+    QTextStream(stdout) << result << QLatin1Char('\n');
     return 0;
 }
 
@@ -306,6 +333,11 @@ int main(int argc, char* argv[])
     configureApp(false, translator, qtTranslator);
     if (qApp->arguments().value(1) == QStringLiteral("ocr-preprocess")) {
         const int exitCode = runOcrPreprocessCommand(qApp->arguments());
+        delete qApp;
+        return exitCode;
+    }
+    if (qApp->arguments().value(1) == QStringLiteral("barcode-scan")) {
+        const int exitCode = runBarcodeScanCommand(qApp->arguments());
         delete qApp;
         return exitCode;
     }

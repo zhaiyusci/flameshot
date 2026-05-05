@@ -11,6 +11,7 @@ class QPixmap;
 class QRect;
 class QDBusMessage;
 class QDBusConnection;
+class QTimer;
 class TrayIcon;
 class CaptureWidget;
 class OcrJobManagerWidget;
@@ -63,6 +64,7 @@ signals:
 
 private:
     FlameshotDaemon();
+    bool isIdle() const;
     void quitIfIdle();
     void attachPin(const QPixmap& pixmap, QRect geometry);
     void attachScreenshotToClipboard(const QPixmap& pixmap);
@@ -98,6 +100,7 @@ private:
     QList<QWidget*> m_widgets;
     TrayIcon* m_trayIcon;
     OcrJobManagerWidget* m_ocrJobManager;
+    QTimer* m_idleQuitTimer;
 
 #if !defined(DISABLE_UPDATE_CHECKER)
     QString m_appLatestUrl;

@@ -142,6 +142,16 @@ public:
     CONFIG_GETTER_SETTER(insecurePixelate, setInsecurePixelate, bool)
     CONFIG_GETTER_SETTER(paddleOcrPython, setPaddleOcrPython, QString)
     CONFIG_GETTER_SETTER(paddleOcrCache, setPaddleOcrCache, QString)
+    CONFIG_GETTER_SETTER(ocrBackend, setOcrBackend, QString)
+    CONFIG_GETTER_SETTER(markerOcrPython, setMarkerOcrPython, QString)
+    CONFIG_GETTER_SETTER(markerOcrCache, setMarkerOcrCache, QString)
+    CONFIG_GETTER_SETTER(markerOcrThreads, setMarkerOcrThreads, int)
+    CONFIG_GETTER_SETTER(markerOcrParallelSmallImages,
+                         setMarkerOcrParallelSmallImages,
+                         bool)
+    CONFIG_GETTER_SETTER(markerOcrParallelThreads,
+                         setMarkerOcrParallelThreads,
+                         int)
     CONFIG_GETTER_SETTER(showSelectionGeometryHideTime,
                          showSelectionGeometryHideTime,
                          int)

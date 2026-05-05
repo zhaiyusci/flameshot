@@ -147,22 +147,23 @@ static std::map<CaptureTool::Type, int> buttonTypeOrder{
     { CaptureTool::TYPE_REDO, 14 },
     { CaptureTool::TYPE_COPY, 15 },
     { CaptureTool::TYPE_OCR, 16 },
-    { CaptureTool::TYPE_SAVE, 17 },
+    { CaptureTool::TYPE_BARCODE, 17 },
+    { CaptureTool::TYPE_SAVE, 18 },
 #ifdef ENABLE_IMGUR
-    { CaptureTool::TYPE_IMAGEUPLOADER, 18 },
+    { CaptureTool::TYPE_IMAGEUPLOADER, 19 },
 #endif
-    { CaptureTool::TYPE_ACCEPT, 19 },
+    { CaptureTool::TYPE_ACCEPT, 20 },
 #if !defined(Q_OS_MACOS)
-    { CaptureTool::TYPE_OPEN_APP, 20 },
+    { CaptureTool::TYPE_OPEN_APP, 21 },
+    { CaptureTool::TYPE_EXIT, 22 },
+    { CaptureTool::TYPE_PIN, 23 },
+#else
     { CaptureTool::TYPE_EXIT, 21 },
     { CaptureTool::TYPE_PIN, 22 },
-#else
-    { CaptureTool::TYPE_EXIT, 20 },
-    { CaptureTool::TYPE_PIN, 21 },
 #endif
 
-    { CaptureTool::TYPE_SIZEINCREASE, 23 },
-    { CaptureTool::TYPE_SIZEDECREASE, 24 },
+    { CaptureTool::TYPE_SIZEINCREASE, 24 },
+    { CaptureTool::TYPE_SIZEDECREASE, 25 },
 };
 
 int CaptureToolButton::getPriorityByButton(CaptureTool::Type b)
@@ -181,7 +182,8 @@ QList<CaptureTool::Type> CaptureToolButton::iterableButtonTypes = {
     CaptureTool::TYPE_INVERT,        CaptureTool::TYPE_MOVESELECTION,
     CaptureTool::TYPE_UNDO,          CaptureTool::TYPE_REDO,
     CaptureTool::TYPE_COPY,          CaptureTool::TYPE_OCR,
-    CaptureTool::TYPE_SAVE,          CaptureTool::TYPE_EXIT,
+    CaptureTool::TYPE_BARCODE,       CaptureTool::TYPE_SAVE,
+    CaptureTool::TYPE_EXIT,
 #ifdef ENABLE_IMGUR
     CaptureTool::TYPE_IMAGEUPLOADER,
 #endif

@@ -3,11 +3,14 @@
 
 #pragma once
 
-#include <QProcess>
 #include <QPixmap>
+#include <QProcess>
 #include <QStringList>
+#include <QThread>
 #include <QVector>
 #include <QWidget>
+
+#include <functional>
 
 class OcrTaskWidget : public QWidget
 {
@@ -16,7 +19,8 @@ public:
     enum class Kind
     {
         Text,
-        Latex
+        Latex,
+        Barcode
     };
 
     explicit OcrTaskWidget(Kind kind,
@@ -27,7 +31,17 @@ public:
     void start();
     void cancelTask();
     static bool isPaddleOcrServiceRunning();
+    static bool isMarkerOcrServiceRunning();
     static void stopPaddleOcrService();
+    static void stopMarkerOcrService();
+    using MarkerFormulaCallback = std::function<void(bool,
+                                                     const QString&,
+                                                     const QString&,
+                                                     const QString&,
+                                                     const QString&)>;
+    static int requestMarkerFormulaOcr(const QPixmap& capture,
+                                       MarkerFormulaCallback callback);
+    static void cancelMarkerOcrRequest(int requestId);
 
     struct BackendCommand
     {
@@ -41,7 +55,14 @@ signals:
     void preparedImageReady(const QString& imagePath);
     void ocrCompleted(const QPixmap& capture,
                       const QString& text,
-                      const QString& latex);
+                      const QString& latex,
+                      const QString& fallbackText,
+                      const QString& fallbackLatex,
+                      const QString& resultInfo,
+                      const QString& fallbackInfo,
+                      const QString& extraText,
+                      const QString& extraLatex,
+                      const QString& extraInfo);
     void textCompleted(const QString& text);
     void latexCompleted(const QPixmap& capture, const QString& latex);
     void failed(const QString& error);
@@ -49,6 +70,8 @@ signals:
 
 private:
     void startPaddleOcr();
+    void startMarkerOcr();
+    void startBarcodeScan();
     void startTextOcr();
     void startNextTextOcrCandidate();
     void startFinalTextOcr(const QString& language);
@@ -65,7 +88,26 @@ private:
     void handlePaddleOcrServiceFinished(bool ok,
                                         const QString& text,
                                         const QString& latex,
+                                        const QString& fallbackText,
+                                        const QString& fallbackLatex,
+                                        const QString& resultInfo,
+                                        const QString& fallbackInfo,
+                                        const QString& extraText,
+                                        const QString& extraLatex,
+                                        const QString& extraInfo,
                                         const QString& error);
+    void handleMarkerOcrServiceFinished(bool ok,
+                                        const QString& text,
+                                        const QString& latex,
+                                        const QString& fallbackText,
+                                        const QString& fallbackLatex,
+                                        const QString& resultInfo,
+                                        const QString& fallbackInfo,
+                                        const QString& extraText,
+                                        const QString& extraLatex,
+                                        const QString& extraInfo,
+                                        const QString& error);
+    void handleBarcodeScanFinished(const QString& result, const QString& error);
     void handleTextOcrProbeFinished(const QString& output,
                                     bool ok,
                                     const QString& error);
@@ -73,7 +115,16 @@ private:
     void failTask(const QString& error);
     void completeTextOcr(const QString& text);
     void completeLatexOcr(const QString& latex);
-    void completePaddleOcr(const QString& text, const QString& latex);
+    void completePaddleOcr(const QString& text,
+                           const QString& latex,
+                           const QString& fallbackText,
+                           const QString& fallbackLatex,
+                           const QString& resultInfo,
+                           const QString& fallbackInfo,
+                           const QString& extraText,
+                           const QString& extraLatex,
+                           const QString& extraInfo);
+    void completeBarcodeScan(const QString& result);
     void cleanupProcess();
     void cleanupImage();
     void setStatus(const QString& status);
@@ -83,12 +134,15 @@ private:
     QProcess* m_process = nullptr;
     int m_paddleOcrRequestId = 0;
     bool m_paddleOcrRequestTimedOut = false;
+    int m_markerOcrRequestId = 0;
+    bool m_markerOcrRequestTimedOut = false;
     int m_textellerRequestId = 0;
     bool m_textellerRequestTimedOut = false;
     QString m_imagePath;
     QString m_formulaImagePath;
     QString m_lastError;
     QString m_processErrorOutput;
+    QThread* m_barcodeThread = nullptr;
     QVector<BackendCommand> m_latexCommands;
     struct TextOcrCandidateResult
     {

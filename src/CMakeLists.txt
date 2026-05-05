@@ -203,6 +203,11 @@ if (TARGET Qt${QT_VERSION_MAJOR}::WebEngineWidgets)
   target_link_libraries(flameshot Qt${QT_VERSION_MAJOR}::WebEngineWidgets)
 endif()
 
+if (FLAMESHOT_ZXING_TARGET)
+  target_compile_definitions(flameshot PRIVATE FLAMESHOT_HAVE_ZXING=1)
+  target_link_libraries(flameshot ${FLAMESHOT_ZXING_TARGET})
+endif()
+
 if (USE_KDSINGLEAPPLICATION)
   message(STATUS "KDSingleApplication is used!")
   add_compile_definitions(USE_KDSINGLEAPPLICATION=1)

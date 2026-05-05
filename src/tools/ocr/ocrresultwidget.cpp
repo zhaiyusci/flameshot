@@ -4,6 +4,7 @@
 #include "ocrresultwidget.h"
 
 #include "core/flameshotdaemon.h"
+#include "tools/ocr/ocrtaskwidget.h"
 #include "utils/abstractlogger.h"
 #include "utils/globalvalues.h"
 
@@ -18,6 +19,7 @@
 #include <QJsonDocument>
 #include <QLabel>
 #include <QPlainTextEdit>
+#include <QPointer>
 #include <QProcess>
 #include <QProcessEnvironment>
 #include <QPushButton>
@@ -28,6 +30,7 @@
 #include <QSplitter>
 #include <QStandardPaths>
 #include <QSyntaxHighlighter>
+#include <QTabWidget>
 #include <QTextCharFormat>
 #include <QTimer>
 #include <QUrl>
@@ -294,19 +297,44 @@ QString npmGlobalKatexDist()
     return QDir(QString::fromUtf8(process.readAllStandardOutput()).trimmed())
       .filePath(QStringLiteral("katex/dist"));
 }
+
+bool canRunMarkerFormulaRoute(const QPixmap& capture, const QString& sourceInfo)
+{
+    return !capture.isNull() &&
+           sourceInfo.compare(QStringLiteral("Marker Markdown"),
+                              Qt::CaseInsensitive) == 0;
+}
 }
 
 OcrResultWidget::OcrResultWidget(const QString& text, QWidget* parent)
-  : OcrResultWidget(QPixmap(), text, QString(), parent)
+  : OcrResultWidget(QPixmap(),
+                    text,
+                    QString(),
+                    QString(),
+                    QString(),
+                    QString(),
+                    QString(),
+                    QString(),
+                    QString(),
+                    QString(),
+                    parent)
 {}
 
 OcrResultWidget::OcrResultWidget(const QPixmap& capture,
                                  const QString& text,
                                  const QString& latex,
+                                 const QString& sourceInfo,
+                                 const QString& fallbackText,
+                                 const QString& fallbackLatex,
+                                 const QString& fallbackInfo,
+                                 const QString& extraText,
+                                 const QString& extraLatex,
+                                 const QString& extraInfo,
                                  QWidget* parent)
   : QWidget(parent)
   , m_editor(new QPlainTextEdit(this))
   , m_katexDist(findKatexDist())
+  , m_capture(capture)
 {
     setAttribute(Qt::WA_DeleteOnClose);
     setWindowIcon(QIcon(GlobalValues::iconPath()));
@@ -320,6 +348,14 @@ OcrResultWidget::OcrResultWidget(const QPixmap& capture,
 
     auto* buttonLayout = new QHBoxLayout;
     buttonLayout->addStretch();
+    if (canRunMarkerFormulaRoute(capture, sourceInfo)) {
+        m_formulaRouteButton = new QPushButton(tr("Try Formula Route"), this);
+        buttonLayout->addWidget(m_formulaRouteButton);
+        connect(m_formulaRouteButton,
+                &QPushButton::clicked,
+                this,
+                &OcrResultWidget::startFormulaRouteRequest);
+    }
     buttonLayout->addWidget(copyButton);
 
     m_previewTimer = new QTimer(this);
@@ -341,9 +377,170 @@ OcrResultWidget::OcrResultWidget(const QPixmap& capture,
     m_preview->setTextInteractionFlags(Qt::TextSelectableByMouse);
 #endif
 
-    connect(m_previewTimer, &QTimer::timeout, this, [this]() {
-        updatePreview();
-    });
+    connect(
+      m_previewTimer, &QTimer::timeout, this, [this]() { updatePreview(); });
+
+    const bool hasAlternatives = canRunMarkerFormulaRoute(capture, sourceInfo) ||
+                                 !fallbackText.isEmpty() ||
+                                 !fallbackLatex.isEmpty() ||
+                                 !extraText.isEmpty() ||
+                                 !extraLatex.isEmpty();
+    if (hasAlternatives) {
+        m_editor->deleteLater();
+        m_editor = nullptr;
+        m_previewTimer->deleteLater();
+        m_previewTimer = nullptr;
+        m_preview->deleteLater();
+        m_preview = nullptr;
+
+        resize(capture.isNull() ? QSize(1040, 600) : QSize(1220, 640));
+        m_resultTabs = new QTabWidget(this);
+
+        auto pageText = [](const QString& body, const QString& pageLatex) {
+            if (!body.isEmpty() && !pageLatex.isEmpty()) {
+                return QStringLiteral("%1\n\nLaTeX:\n%2").arg(body, pageLatex);
+            }
+            if (!body.isEmpty()) {
+                return body;
+            }
+            return pageLatex;
+        };
+
+        auto addResultTab = [this, pageText](const QString& title,
+                                             const QString& body,
+                                             const QString& pageLatex) {
+            auto* page = new QWidget(this);
+            auto* editor = new QPlainTextEdit(page);
+            editor->setPlainText(pageText(body, pageLatex));
+            editor->setLineWrapMode(QPlainTextEdit::WidgetWidth);
+            editor->setFont(
+              QFontDatabase::systemFont(QFontDatabase::FixedFont));
+            new MarkdownSyntaxHighlighter(editor->document());
+
+            auto* preview = new
+#if defined(FLAMESHOT_HAVE_QT_WEBENGINE)
+              QWebEngineView
+#else
+              QLabel
+#endif
+              (page);
+            preview->setMinimumSize(QSize(240, 240));
+            preview->setSizePolicy(QSizePolicy::Expanding,
+                                   QSizePolicy::Expanding);
+#if !defined(FLAMESHOT_HAVE_QT_WEBENGINE)
+            preview->setAlignment(Qt::AlignCenter);
+            preview->setWordWrap(true);
+            preview->setTextInteractionFlags(Qt::TextSelectableByMouse);
+#endif
+
+            auto* timer = new QTimer(page);
+            timer->setSingleShot(true);
+            timer->setInterval(120);
+            auto updatePagePreview = [this, editor, preview]() {
+                const QString markdown = editor->toPlainText().trimmed();
+#if defined(FLAMESHOT_HAVE_QT_WEBENGINE)
+                if (markdown.isEmpty()) {
+                    preview->setHtml(QStringLiteral(
+                      "<!doctype html><meta charset=\"utf-8\">"
+                      "<body style=\"font:14px sans-serif;padding:16px;"
+                      "color:#555;\">%1</body>")
+                                       .arg(tr("No OCR result to preview.")
+                                              .toHtmlEscaped()));
+                    return;
+                }
+                if (m_katexDist.isEmpty()) {
+                    preview->setHtml(QStringLiteral(
+                      "<!doctype html><meta charset=\"utf-8\">"
+                      "<body style=\"font:14px sans-serif;padding:16px;"
+                      "color:#555;\">%1</body>")
+                                       .arg(tr("Markdown preview with KaTeX "
+                                               "requires local KaTeX assets.")
+                                              .toHtmlEscaped()));
+                    return;
+                }
+                preview->setHtml(
+                  markdownHtml(markdown),
+                  QUrl::fromLocalFile(m_katexDist + QDir::separator()));
+#else
+                preview->setText(markdown.isEmpty()
+                                   ? tr("No OCR result to preview.")
+                                   : markdown);
+#endif
+            };
+            connect(timer, &QTimer::timeout, page, updatePagePreview);
+            connect(editor, &QPlainTextEdit::textChanged, page, [timer]() {
+                timer->start();
+            });
+
+            auto* splitter = new QSplitter(Qt::Horizontal, page);
+            splitter->addWidget(labeledPane(tr("Source"), editor, page));
+            splitter->addWidget(labeledPane(tr("Preview"), preview, page));
+            splitter->setChildrenCollapsible(false);
+            splitter->setStretchFactor(0, 1);
+            splitter->setStretchFactor(1, 1);
+            splitter->setSizes({ 1, 1 });
+
+            auto* pageLayout = new QVBoxLayout(page);
+            pageLayout->setContentsMargins(0, 0, 0, 0);
+            pageLayout->addWidget(splitter);
+
+            m_tabEditors << editor;
+            m_tabLatexEditors << nullptr;
+            m_resultTabs->addTab(page, title.isEmpty() ? tr("OCR") : title);
+            updatePagePreview();
+        };
+
+        addResultTab(sourceInfo.isEmpty() ? tr("Primary") : sourceInfo,
+                     text,
+                     latex);
+        if (!fallbackText.isEmpty() || !fallbackLatex.isEmpty()) {
+            addResultTab(fallbackInfo.isEmpty() ? tr("Fallback")
+                                                : fallbackInfo,
+                         fallbackText,
+                         fallbackLatex);
+        }
+        if (!extraText.isEmpty() || !extraLatex.isEmpty()) {
+            addResultTab(extraInfo.isEmpty() ? tr("Text OCR") : extraInfo,
+                         extraText,
+                         extraLatex);
+        }
+
+        auto* splitter = new QSplitter(Qt::Horizontal, this);
+        if (!capture.isNull()) {
+            auto* imageLabel = new QLabel(this);
+            imageLabel->setAlignment(Qt::AlignCenter);
+            imageLabel->setPixmap(capture);
+
+            auto* imageScroll = new QScrollArea(this);
+            imageScroll->setWidget(imageLabel);
+            imageScroll->setWidgetResizable(true);
+            imageScroll->setMinimumWidth(240);
+            imageScroll->setSizePolicy(QSizePolicy::Expanding,
+                                       QSizePolicy::Expanding);
+            splitter->addWidget(labeledPane(tr("Original"), imageScroll, this));
+        }
+        splitter->addWidget(m_resultTabs);
+        splitter->setChildrenCollapsible(false);
+        splitter->setStretchFactor(0, 1);
+        splitter->setStretchFactor(1, 2);
+
+        buttonLayout->addWidget(closeButton);
+        auto* layout = new QVBoxLayout(this);
+        layout->addWidget(splitter);
+        layout->addLayout(buttonLayout);
+
+        connect(copyButton, &QPushButton::clicked, this, [this]() {
+            FlameshotDaemon::copyToClipboard(combinedResult());
+            AbstractLogger::info(AbstractLogger::Stderr)
+              << tr("OCR result copied to clipboard.");
+        });
+        connect(closeButton, &QPushButton::clicked, this, &QWidget::close);
+        if (!m_tabEditors.isEmpty()) {
+            m_tabEditors.first()->setFocus();
+            m_tabEditors.first()->selectAll();
+        }
+        return;
+    }
 
     if (latex.isEmpty()) {
         resize(capture.isNull() ? QSize(920, 540) : QSize(1180, 620));
@@ -365,7 +562,10 @@ OcrResultWidget::OcrResultWidget(const QPixmap& capture,
                                        QSizePolicy::Expanding);
             splitter->addWidget(labeledPane(tr("Original"), imageScroll, this));
         }
-        splitter->addWidget(labeledPane(tr("Markdown"), m_editor, this));
+        const QString markdownTitle = sourceInfo.isEmpty()
+                                        ? tr("Markdown")
+                                        : tr("Markdown (%1)").arg(sourceInfo);
+        splitter->addWidget(labeledPane(markdownTitle, m_editor, this));
         splitter->addWidget(labeledPane(tr("Preview"), m_preview, this));
         splitter->setChildrenCollapsible(false);
         for (int i = 0; i < splitter->count(); ++i) {
@@ -373,10 +573,11 @@ OcrResultWidget::OcrResultWidget(const QPixmap& capture,
         }
         splitter->setSizes(capture.isNull() ? QList<int>{ 440, 440 }
                                             : QList<int>{ 360, 360, 360 });
-        QTimer::singleShot(0, splitter, [splitter, hasCapture = !capture.isNull()]() {
-            splitter->setSizes(hasCapture ? QList<int>{ 1, 1, 1 }
-                                          : QList<int>{ 1, 1 });
-        });
+        QTimer::singleShot(
+          0, splitter, [splitter, hasCapture = !capture.isNull()]() {
+              splitter->setSizes(hasCapture ? QList<int>{ 1, 1, 1 }
+                                            : QList<int>{ 1, 1 });
+          });
 
         auto* layout = new QVBoxLayout(this);
         layout->addWidget(splitter);
@@ -409,8 +610,7 @@ OcrResultWidget::OcrResultWidget(const QPixmap& capture,
     imageScroll->setWidget(imageLabel);
     imageScroll->setWidgetResizable(true);
     imageScroll->setMinimumWidth(240);
-    imageScroll->setSizePolicy(QSizePolicy::Expanding,
-                               QSizePolicy::Expanding);
+    imageScroll->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 
     m_latexEditor = new QPlainTextEdit(this);
     m_latexEditor->setPlainText(latex);
@@ -424,7 +624,8 @@ OcrResultWidget::OcrResultWidget(const QPixmap& capture,
     } else {
         auto* sourceSplitter = new QSplitter(Qt::Vertical, this);
         sourceSplitter->addWidget(labeledPane(tr("Text"), m_editor, this));
-        sourceSplitter->addWidget(labeledPane(tr("LaTeX"), m_latexEditor, this));
+        sourceSplitter->addWidget(
+          labeledPane(tr("LaTeX"), m_latexEditor, this));
         sourceSplitter->setChildrenCollapsible(false);
         sourceSplitter->setStretchFactor(0, 1);
         sourceSplitter->setStretchFactor(1, 1);
@@ -440,9 +641,8 @@ OcrResultWidget::OcrResultWidget(const QPixmap& capture,
     splitter->setStretchFactor(1, 1);
     splitter->setStretchFactor(2, 1);
     splitter->setSizes({ 360, 360, 360 });
-    QTimer::singleShot(0, splitter, [splitter]() {
-        splitter->setSizes({ 1, 1, 1 });
-    });
+    QTimer::singleShot(
+      0, splitter, [splitter]() { splitter->setSizes({ 1, 1, 1 }); });
 
     auto* copyLatexButton = new QPushButton(tr("Copy LaTeX"), this);
     buttonLayout->addWidget(copyLatexButton);
@@ -472,9 +672,187 @@ OcrResultWidget::OcrResultWidget(const QPixmap& capture,
     updatePreview();
 }
 
+OcrResultWidget::~OcrResultWidget()
+{
+    m_destroying = true;
+    if (m_formulaRouteRequestId != 0) {
+        OcrTaskWidget::cancelMarkerOcrRequest(m_formulaRouteRequestId);
+        m_formulaRouteRequestId = 0;
+    }
+}
+
+void OcrResultWidget::addMarkdownResultTab(const QString& title,
+                                           const QString& body,
+                                           const QString& pageLatex,
+                                           bool selectTab)
+{
+    if (!m_resultTabs) {
+        return;
+    }
+
+    auto pageText = [](const QString& text, const QString& latex) {
+        if (!text.isEmpty() && !latex.isEmpty()) {
+            return QStringLiteral("%1\n\nLaTeX:\n%2").arg(text, latex);
+        }
+        if (!text.isEmpty()) {
+            return text;
+        }
+        return latex;
+    };
+
+    auto* page = new QWidget(this);
+    auto* editor = new QPlainTextEdit(page);
+    editor->setPlainText(pageText(body, pageLatex));
+    editor->setLineWrapMode(QPlainTextEdit::WidgetWidth);
+    editor->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+    new MarkdownSyntaxHighlighter(editor->document());
+
+    auto* preview = new
+#if defined(FLAMESHOT_HAVE_QT_WEBENGINE)
+      QWebEngineView
+#else
+      QLabel
+#endif
+      (page);
+    preview->setMinimumSize(QSize(240, 240));
+    preview->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+#if !defined(FLAMESHOT_HAVE_QT_WEBENGINE)
+    preview->setAlignment(Qt::AlignCenter);
+    preview->setWordWrap(true);
+    preview->setTextInteractionFlags(Qt::TextSelectableByMouse);
+#endif
+
+    auto* timer = new QTimer(page);
+    timer->setSingleShot(true);
+    timer->setInterval(120);
+    auto updatePagePreview = [this, editor, preview]() {
+        const QString markdown = editor->toPlainText().trimmed();
+#if defined(FLAMESHOT_HAVE_QT_WEBENGINE)
+        if (markdown.isEmpty()) {
+            preview->setHtml(QStringLiteral(
+              "<!doctype html><meta charset=\"utf-8\">"
+              "<body style=\"font:14px sans-serif;padding:16px;"
+              "color:#555;\">%1</body>")
+                               .arg(tr("No OCR result to preview.")
+                                      .toHtmlEscaped()));
+            return;
+        }
+        if (m_katexDist.isEmpty()) {
+            preview->setHtml(QStringLiteral(
+              "<!doctype html><meta charset=\"utf-8\">"
+              "<body style=\"font:14px sans-serif;padding:16px;"
+              "color:#555;\">%1</body>")
+                               .arg(tr("Markdown preview with KaTeX requires "
+                                       "local KaTeX assets.")
+                                      .toHtmlEscaped()));
+            return;
+        }
+        preview->setHtml(markdownHtml(markdown),
+                         QUrl::fromLocalFile(m_katexDist + QDir::separator()));
+#else
+        preview->setText(markdown.isEmpty() ? tr("No OCR result to preview.")
+                                            : markdown);
+#endif
+    };
+    connect(timer, &QTimer::timeout, page, updatePagePreview);
+    connect(editor, &QPlainTextEdit::textChanged, page, [timer]() {
+        timer->start();
+    });
+
+    auto* splitter = new QSplitter(Qt::Horizontal, page);
+    splitter->addWidget(labeledPane(tr("Source"), editor, page));
+    splitter->addWidget(labeledPane(tr("Preview"), preview, page));
+    splitter->setChildrenCollapsible(false);
+    splitter->setStretchFactor(0, 1);
+    splitter->setStretchFactor(1, 1);
+    splitter->setSizes({ 1, 1 });
+
+    auto* pageLayout = new QVBoxLayout(page);
+    pageLayout->setContentsMargins(0, 0, 0, 0);
+    pageLayout->addWidget(splitter);
+
+    m_tabEditors << editor;
+    m_tabLatexEditors << nullptr;
+    m_resultTabs->addTab(page, title.isEmpty() ? tr("OCR") : title);
+    updatePagePreview();
+    if (selectTab) {
+        m_resultTabs->setCurrentWidget(page);
+        editor->setFocus();
+        editor->selectAll();
+    }
+}
+
+void OcrResultWidget::startFormulaRouteRequest()
+{
+    if (m_formulaRouteRequestId != 0 || !m_formulaRouteButton) {
+        return;
+    }
+
+    m_formulaRouteButton->setEnabled(false);
+    m_formulaRouteButton->setText(tr("Running Formula Route..."));
+    QPointer<OcrResultWidget> guard(this);
+    m_formulaRouteRequestId = OcrTaskWidget::requestMarkerFormulaOcr(
+      m_capture,
+      [guard](bool ok,
+              const QString& text,
+              const QString& latex,
+              const QString& info,
+              const QString& error) {
+          if (guard) {
+              guard->finishFormulaRouteRequest(ok, text, latex, info, error);
+          }
+      });
+}
+
+void OcrResultWidget::finishFormulaRouteRequest(bool ok,
+                                                const QString& text,
+                                                const QString& latex,
+                                                const QString& info,
+                                                const QString& error)
+{
+    if (m_destroying) {
+        return;
+    }
+
+    m_formulaRouteRequestId = 0;
+    if (m_formulaRouteButton) {
+        m_formulaRouteButton->setText(tr("Try Formula Route"));
+        m_formulaRouteButton->setEnabled(true);
+    }
+
+    const QString title = info.isEmpty() ? tr("Marker Formula") : info;
+    if (ok && (!text.trimmed().isEmpty() || !latex.trimmed().isEmpty())) {
+        addMarkdownResultTab(title, text.trimmed(), latex.trimmed(), true);
+        return;
+    }
+
+    const QString message =
+      error.isEmpty() ? tr("Marker formula route produced no result.") : error;
+    addMarkdownResultTab(tr("Formula Route Failed"), message, QString(), true);
+}
+
 QString OcrResultWidget::combinedResult() const
 {
-    const QString text = m_editor ? m_editor->toPlainText().trimmed() : QString();
+    if (m_resultTabs) {
+        const int index = m_resultTabs->currentIndex();
+        const QString text = m_tabEditors.value(index)
+                               ? m_tabEditors.value(index)->toPlainText().trimmed()
+                               : QString();
+        const QString latex =
+          m_tabLatexEditors.value(index)
+            ? m_tabLatexEditors.value(index)->toPlainText().trimmed()
+            : QString();
+        if (!text.isEmpty() && !latex.isEmpty()) {
+            return QStringLiteral("%1\n\nLaTeX:\n%2").arg(text, latex);
+        }
+        if (!text.isEmpty()) {
+            return text;
+        }
+        return latex;
+    }
+
+    const QString text =
+      m_editor ? m_editor->toPlainText().trimmed() : QString();
     const QString latex =
       m_latexEditor ? m_latexEditor->toPlainText().trimmed() : QString();
     if (!text.isEmpty() && !latex.isEmpty()) {
@@ -514,12 +892,14 @@ void OcrResultWidget::updatePreview()
                                  "package or dist directory."));
             return;
         }
-        m_preview->setHtml(markdownHtml(markdown),
-                           QUrl::fromLocalFile(m_katexDist + QDir::separator()));
+        m_preview->setHtml(
+          markdownHtml(markdown),
+          QUrl::fromLocalFile(m_katexDist + QDir::separator()));
 #else
-        setPreviewMessage(tr("Markdown preview with KaTeX requires QtWebEngine. "
-                             "Install the qt6-webenginewidgets-devel package "
-                             "and rebuild Flameshot."));
+        setPreviewMessage(
+          tr("Markdown preview with KaTeX requires QtWebEngine. "
+             "Install the qt6-webenginewidgets-devel package "
+             "and rebuild Flameshot."));
 #endif
         return;
     }

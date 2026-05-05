@@ -134,8 +134,14 @@ static QMap<class QString, QSharedPointer<ValueHandler>>
     OPTION("jpegQuality"                 , BoundedInt        ( 0,100,75      )),
     OPTION("reverseArrow"                ,Bool               ( false         )),
     OPTION("insecurePixelate"            ,Bool               ( false         )),
+    OPTION("ocrBackend"                  ,String             ( "auto"        )),
     OPTION("paddleOcrPython"             ,String             ( ""            )),
     OPTION("paddleOcrCache"              ,String             ( ""            )),
+    OPTION("markerOcrPython"             ,String             ( ""            )),
+    OPTION("markerOcrCache"              ,String             ( ""            )),
+    OPTION("markerOcrThreads"            ,BoundedInt         ( 1,128,8       )),
+    OPTION("markerOcrParallelSmallImages",Bool               ( false         )),
+    OPTION("markerOcrParallelThreads"    ,BoundedInt         ( 1,128,4       )),
 #if defined(Q_OS_WIN)
     // Not visible on settings dialog
     OPTION("ignorePrntScrForcesSnipping" ,Bool               ( false         )),
@@ -165,6 +171,7 @@ static QMap<QString, QSharedPointer<KeySequence>> recognizedShortcuts = {
     SHORTCUT("TYPE_UNDO"                ,   "Ctrl+Z"                ),
     SHORTCUT("TYPE_COPY"                ,   "Ctrl+C"                ),
     SHORTCUT("TYPE_OCR"                 ,                           ),
+    SHORTCUT("TYPE_BARCODE"             ,                           ),
     SHORTCUT("TYPE_SAVE"                ,   "Ctrl+S"                ),
     SHORTCUT("TYPE_ACCEPT"              ,   "Return"                ),
     SHORTCUT("TYPE_EXIT"                ,   "Ctrl+Q"                ),

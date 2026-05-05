@@ -53,6 +53,7 @@ public:
         TYPE_CANCEL = 24,
         TYPE_OCR = 25,
         TYPE_LATEX_OCR = 26,
+        TYPE_BARCODE = 27,
     };
     Q_ENUM(Type);
 
@@ -78,7 +79,8 @@ public:
         // Instance this->widget()'s widget which handles its own lifetime.
         REQ_ADD_EXTERNAL_WIDGETS,
         // Close the capture widget without exporting a screenshot or reporting
-        // an aborted capture. Used when work is handed off to a background task.
+        // an aborted capture. Used when work is handed off to a background
+        // task.
         REQ_CLOSE_GUI_WITHOUT_CAPTURE,
         // increase tool size for all tools
         REQ_INCREASE_TOOL_SIZE,

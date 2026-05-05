@@ -9,7 +9,7 @@ set(GIT_API_URL "https://api.github.com/repos/flameshot-org/flameshot/releases/l
 project(
   flameshot
   VERSION ${FLAMESHOT_VERSION}
-  LANGUAGES CXX)
+  LANGUAGES C CXX)
 set(PROJECT_NAME_CAPITALIZED "Flameshot")
 
 include(FetchContent)
@@ -81,6 +81,7 @@ option(USE_MONOCHROME_ICON "Build using monochrome icon as default" OFF)
 option(GENERATE_TS "Regenerate translation source files" OFF)
 option(USE_KDSINGLEAPPLICATION "Use KDSingleApplication library" ON)
 option(USE_BUNDLED_KDSINGLEAPPLICATION "Use a bundled version of the KDSingleApplication library" ${USE_KDSINGLEAPPLICATION})
+option(USE_BUNDLED_ZXING "Use a bundled version of zxing-cpp for barcode recognition if no system package is found" ON)
 option(USE_LAUNCHER_ABSOLUTE_PATH "Use absolute path for the desktop launcher" ON)
 option(USE_WAYLAND_CLIPBOARD "USE KF Gui Wayland Clipboard" OFF)
 option(DISABLE_UPDATE_CHECKER "Disable check for updates" OFF)
@@ -147,6 +148,34 @@ if(WIN32 OR APPLE)
     GIT_TAG master
   )
   FetchContent_MakeAvailable(QHotKey)
+endif()
+
+find_package(ZXing CONFIG QUIET)
+if(TARGET ZXing::ZXing)
+  set(FLAMESHOT_ZXING_TARGET ZXing::ZXing)
+elseif(TARGET ZXing)
+  set(FLAMESHOT_ZXING_TARGET ZXing)
+elseif(USE_BUNDLED_ZXING)
+  set(ZXING_EXAMPLES OFF CACHE BOOL "Disable zxing-cpp examples" FORCE)
+  set(ZXING_BLACKBOX_TESTS OFF CACHE BOOL "Disable zxing-cpp blackbox tests" FORCE)
+  set(ZXING_UNIT_TESTS OFF CACHE BOOL "Disable zxing-cpp unit tests" FORCE)
+  set(ZXING_READERS ON CACHE BOOL "Enable zxing-cpp readers" FORCE)
+  set(ZXING_WRITERS OFF CACHE BOOL "Disable zxing-cpp writers" FORCE)
+  FetchContent_Declare(
+    zxingCpp
+    GIT_REPOSITORY https://github.com/zxing-cpp/zxing-cpp.git
+    GIT_TAG v2.3.0
+    GIT_SHALLOW TRUE
+  )
+  FetchContent_MakeAvailable(zxingCpp)
+  if(TARGET ZXing::ZXing)
+    set(FLAMESHOT_ZXING_TARGET ZXing::ZXing)
+  elseif(TARGET ZXing)
+    set(FLAMESHOT_ZXING_TARGET ZXing)
+  endif()
+endif()
+if(NOT FLAMESHOT_ZXING_TARGET)
+  message(WARNING "zxing-cpp was not found; barcode recognition will report an unavailable backend at runtime.")
 endif()
 
 add_subdirectory(src)

@@ -326,7 +326,7 @@ CaptureWidget::~CaptureWidget()
         Flameshot::instance()->exportCapture(
           pixmap(), geometry, m_context.request);
     } else if (!m_closeWithoutCapture) {
-        emit Flameshot::instance()->captureFailed();
+        emit Flameshot::instance() -> captureFailed();
     }
 }
 
@@ -344,6 +344,7 @@ void CaptureWidget::initButtons()
             buttonList->removeOne(CaptureTool::TYPE_SAVE);
             buttonList->removeOne(CaptureTool::TYPE_COPY);
             buttonList->removeOne(CaptureTool::TYPE_OCR);
+            buttonList->removeOne(CaptureTool::TYPE_BARCODE);
 #ifdef ENABLE_IMGUR
             buttonList->removeOne(CaptureTool::TYPE_IMAGEUPLOADER);
 #endif
@@ -476,7 +477,8 @@ void CaptureWidget::initHelpMessage()
     for (auto toolType : { CT::TYPE_ACCEPT,
                            CT::TYPE_SAVE,
                            CT::TYPE_COPY,
-                           CT::TYPE_OCR }) {
+                           CT::TYPE_OCR,
+                           CT::TYPE_BARCODE }) {
         if (!m_tools.contains(toolType)) {
             continue;
         }
@@ -1464,11 +1466,10 @@ void CaptureWidget::handleToolSignal(CaptureTool::Request r)
                 drawToolsData(false);
             }
             break;
-        case CaptureTool::REQ_ADD_CHILD_WIDGET:
-        {
-            CaptureTool* tool =
-              m_activeTool ? m_activeTool.data()
-                           : qobject_cast<CaptureTool*>(sender());
+        case CaptureTool::REQ_ADD_CHILD_WIDGET: {
+            CaptureTool* tool = m_activeTool
+                                  ? m_activeTool.data()
+                                  : qobject_cast<CaptureTool*>(sender());
             if (!tool) {
                 break;
             }
@@ -1486,11 +1487,10 @@ void CaptureWidget::handleToolSignal(CaptureTool::Request r)
             }
             break;
         }
-        case CaptureTool::REQ_ADD_EXTERNAL_WIDGETS:
-        {
-            CaptureTool* tool =
-              m_activeTool ? m_activeTool.data()
-                           : qobject_cast<CaptureTool*>(sender());
+        case CaptureTool::REQ_ADD_EXTERNAL_WIDGETS: {
+            CaptureTool* tool = m_activeTool
+                                  ? m_activeTool.data()
+                                  : qobject_cast<CaptureTool*>(sender());
             if (!tool) {
                 break;
             } else {

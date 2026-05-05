@@ -4,6 +4,7 @@
 #include "toolfactory.h"
 #include "tools/accept/accepttool.h"
 #include "tools/arrow/arrowtool.h"
+#include "tools/barcode/barcodetool.h"
 #include "tools/circle/circletool.h"
 #include "tools/circlecount/circlecounttool.h"
 #include "tools/copy/copytool.h"
@@ -51,6 +52,7 @@ CaptureTool* ToolFactory::CreateTool(CaptureTool::Type t, QObject* parent)
         if_TYPE_return_TOOL(TYPE_UNDO, UndoTool);
         if_TYPE_return_TOOL(TYPE_COPY, CopyTool);
         if_TYPE_return_TOOL(TYPE_OCR, OcrTool);
+        if_TYPE_return_TOOL(TYPE_BARCODE, BarcodeTool);
         if_TYPE_return_TOOL(TYPE_SAVE, SaveTool);
         if_TYPE_return_TOOL(TYPE_EXIT, ExitTool);
 #ifdef ENABLE_IMGUR

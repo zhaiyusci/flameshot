@@ -11,6 +11,7 @@
         <file>img/app/keyboard.svg</file>
         <file>img/material/black/accept.svg</file>
         <file>img/material/black/arrow-bottom-left.svg</file>
+        <file>img/material/black/barcode.svg</file>
         <file>img/material/black/centeralign.svg</file>
         <file>img/material/black/circle-outline.svg</file>
         <file>img/material/black/close.svg</file>
@@ -54,6 +55,7 @@
         <file>img/material/black/shortcut.svg</file>
         <file>img/material/white/accept.svg</file>
         <file>img/material/white/arrow-bottom-left.svg</file>
+        <file>img/material/white/barcode.svg</file>
         <file>img/material/white/centeralign.svg</file>
         <file>img/material/white/circle-outline.svg</file>
         <file>img/material/white/circlecount-outline.svg</file>
