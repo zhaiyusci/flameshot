@@ -50,6 +50,13 @@ public:
     explicit CaptureWidget(const CaptureRequest& req,
                            bool fullScreen = true,
                            QWidget* parent = nullptr);
+    explicit CaptureWidget(const CaptureRequest& req,
+                           const QPixmap& sourcePixmap,
+                           QWidget* parent = nullptr);
+    explicit CaptureWidget(const CaptureRequest& req,
+                           const QPixmap& sourcePixmap,
+                           bool fullScreen,
+                           QWidget* parent = nullptr);
     ~CaptureWidget();
 
     QPixmap pixmap();
@@ -66,6 +73,7 @@ public slots:
 signals:
     void colorChanged(const QColor& c);
     void toolSizeChanged(int size);
+    void captureCommitted(const QPixmap& capture, int tasks);
 
 private slots:
     void undo();
@@ -157,6 +165,10 @@ private:
     CaptureTool::Type activeButtonToolType() const;
 
     QPoint snapToGrid(const QPoint& point) const;
+    CaptureWidget(const CaptureRequest& req,
+                  bool fullScreen,
+                  QWidget* parent,
+                  const QPixmap& sourcePixmap);
 
     ////////////////////////////////////////
     // Class members
@@ -180,6 +192,7 @@ private:
     bool m_captureDone;
     bool m_closeWithoutCapture;
     bool m_previewEnabled;
+    bool m_localImageMode;
     bool m_adjustmentButtonPressed;
     bool m_configError;
     bool m_configErrorResolved;

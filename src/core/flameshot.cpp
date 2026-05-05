@@ -65,7 +65,10 @@ constexpr const char* visibleInDockProperty = "_visibleInDock";
 #include <QDebug>
 #include <QDesktopServices>
 #include <QFile>
+#include <QFileDialog>
+#include <QImageReader>
 #include <QMessageBox>
+#include <QScreen>
 #include <QThread>
 #include <QTimer>
 #include <QUrl>
@@ -178,6 +181,60 @@ CaptureWidget* Flameshot::gui(const CaptureRequest& req)
         emit captureFailed();
         return nullptr;
     }
+}
+
+void Flameshot::pinImage()
+{
+    if (!resolveAnyConfigErrors()) {
+        return;
+    }
+
+    QStringList patterns;
+    const QList<QByteArray> formats = QImageReader::supportedImageFormats();
+    for (const QByteArray& format : formats) {
+        patterns << QStringLiteral("*.%1")
+                      .arg(QString::fromLatin1(format).toLower());
+    }
+    patterns.removeDuplicates();
+    patterns.sort(Qt::CaseInsensitive);
+
+    const QString filter =
+      patterns.isEmpty()
+        ? tr("Images (*)")
+        : tr("Images (%1)").arg(patterns.join(QLatin1Char(' ')));
+    const QString path =
+      QFileDialog::getOpenFileName(nullptr, tr("Pin Image"), QString(), filter);
+    if (path.isEmpty()) {
+        return;
+    }
+
+    QImageReader reader(path);
+    reader.setAutoTransform(true);
+    const QImage image = reader.read();
+    if (image.isNull()) {
+        QMessageBox::warning(
+          nullptr,
+          tr("Error"),
+          tr("Unable to open image:\n%1").arg(reader.errorString()));
+        return;
+    }
+
+    const QPixmap pixmap = QPixmap::fromImage(image);
+    QSize pinSize = pixmap.size();
+    if (pixmap.devicePixelRatio() > 1.0) {
+        pinSize = QSize(pixmap.width() / pixmap.devicePixelRatio(),
+                        pixmap.height() / pixmap.devicePixelRatio());
+    }
+
+    QRect geometry(QPoint(), pinSize);
+    QScreen* screen = QGuiAppCurrentScreen().currentScreen();
+    if (!screen) {
+        screen = QGuiApplication::primaryScreen();
+    }
+    if (screen) {
+        geometry.moveCenter(screen->availableGeometry().center());
+    }
+    FlameshotDaemon::createPin(pixmap, geometry);
 }
 
 void Flameshot::screen(CaptureRequest req, const int screenNumber)

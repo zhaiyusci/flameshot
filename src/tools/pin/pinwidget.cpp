@@ -2,15 +2,19 @@
 // SPDX-FileCopyrightText: 2017-2019 Alejandro Sirgo Rica & Contributors
 
 #include "pinwidget.h"
+#include "core/capturerequest.h"
 #include "core/qguiappcurrentscreen.h"
 #include "utils/confighandler.h"
 #include "utils/globalvalues.h"
 #include "utils/screenshotsaver.h"
+#include "widgets/capture/capturewidget.h"
 
 #include <QGraphicsDropShadowEffect>
 #include <QGraphicsOpacityEffect>
+#include <QGuiApplication>
 #include <QLabel>
 #include <QMenu>
+#include <QPainter>
 #include <QPinchGesture>
 #include <QScreen>
 #include <QShortcut>
@@ -93,11 +97,34 @@ PinWidget::PinWidget(const QPixmap& pixmap,
             &PinWidget::showContextMenu);
 }
 
+PinWidget::~PinWidget()
+{
+    if (m_editor) {
+        disconnect(m_editor, nullptr, this, nullptr);
+    }
+}
+
 void PinWidget::closePin()
 {
     update();
     close();
 }
+
+void PinWidget::setPinnedPixmap(const QPixmap& pixmap)
+{
+    if (pixmap.isNull()) {
+        return;
+    }
+
+    m_pixmap = pixmap;
+    m_scaleFactor = 1;
+    m_currentStepScaleFactor = 1;
+    m_expanding = false;
+    m_sizeChanged = false;
+    m_label->setPixmap(m_pixmap);
+    adjustSize();
+}
+
 bool PinWidget::scrollEvent(QWheelEvent* event)
 {
     const auto phase = event->phase();
@@ -206,6 +233,100 @@ void PinWidget::rotateRight()
     m_pixmap = m_pixmap.transformed(rotateTransform);
 }
 
+void PinWidget::openTools()
+{
+    if (m_editor) {
+        m_editor->activateWindow();
+        m_editor->raise();
+        m_editor->setFocus();
+        return;
+    }
+
+    QPixmap editorPixmap = m_label->pixmap();
+    if (editorPixmap.isNull()) {
+        editorPixmap = m_pixmap;
+    }
+    if (editorPixmap.isNull()) {
+        return;
+    }
+
+    const QRect imageGlobalRect(m_label->mapToGlobal(QPoint(0, 0)),
+                                m_label->size());
+    QScreen* screen = QGuiApplication::screenAt(imageGlobalRect.center());
+    if (!screen) {
+        screen = QGuiAppCurrentScreen().currentScreen();
+    }
+    if (!screen) {
+        screen = QGuiApplication::primaryScreen();
+    }
+    if (!screen) {
+        return;
+    }
+
+    const QRect screenGeometry = screen->geometry();
+    const QRect screenLocalRect(QPoint(0, 0), screenGeometry.size());
+    const QRect imageLocalRect(imageGlobalRect.topLeft() -
+                                 screenGeometry.topLeft(),
+                               imageGlobalRect.size());
+    const QRect initialSelection = imageLocalRect.intersected(screenLocalRect);
+    if (initialSelection.isNull()) {
+        return;
+    }
+
+    QPixmap editorPixmapOnScreen(screenGeometry.size());
+    editorPixmapOnScreen.fill(QColor(32, 32, 32));
+    QPainter painter(&editorPixmapOnScreen);
+    painter.drawPixmap(imageLocalRect, editorPixmap);
+    painter.end();
+
+    const auto screens = QGuiApplication::screens();
+    const int screenIndex = screens.indexOf(screen);
+    if (screenIndex < 0) {
+        return;
+    }
+
+    CaptureRequest request(CaptureRequest::GRAPHICAL_MODE,
+                           0,
+                           tr("Pin Tools"));
+    request.setSelectedMonitor(screenIndex);
+    request.setInitialSelection(initialSelection);
+
+    hide();
+
+    auto* editor = new CaptureWidget(request, editorPixmapOnScreen, true);
+    m_editor = editor;
+    connect(editor,
+            &CaptureWidget::captureCommitted,
+            this,
+            [this, editor](const QPixmap& pixmap, int tasks) {
+                if (m_editor == editor &&
+                    tasks == static_cast<int>(CaptureRequest::NO_TASK)) {
+                    setPinnedPixmap(pixmap);
+                }
+            });
+
+    connect(editor,
+            &QObject::destroyed,
+            this,
+            [this, editor]() {
+                if (m_editor == editor) {
+                    m_editor = nullptr;
+                }
+                show();
+                raise();
+                activateWindow();
+            });
+
+#if defined(Q_OS_WIN)
+    editor->show();
+#else
+    editor->showFullScreen();
+#endif
+    editor->activateWindow();
+    editor->raise();
+    editor->setFocus();
+}
+
 void PinWidget::increaseOpacity()
 {
     m_opacity += 0.1;
@@ -291,6 +412,13 @@ void PinWidget::showContextMenu(const QPoint& pos)
     connect(
       &saveToFileAction, &QAction::triggered, this, &PinWidget::saveToFile);
     contextMenu.addAction(&saveToFileAction);
+
+    contextMenu.addSeparator();
+
+    QAction openToolsAction(tr("Open Tools"), this);
+    connect(
+      &openToolsAction, &QAction::triggered, this, &PinWidget::openTools);
+    contextMenu.addAction(&openToolsAction);
 
     contextMenu.addSeparator();
 

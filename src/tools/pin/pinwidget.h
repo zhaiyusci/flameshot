@@ -3,8 +3,10 @@
 
 #pragma once
 
+#include <QPointer>
 #include <QWidget>
 
+class CaptureWidget;
 class QLabel;
 class QVBoxLayout;
 class QGestureEvent;
@@ -18,6 +20,7 @@ public:
     explicit PinWidget(const QPixmap& pixmap,
                        const QRect& geometry,
                        QWidget* parent = nullptr);
+    ~PinWidget() override;
 
 protected:
     void mouseDoubleClickEvent(QMouseEvent*) override;
@@ -35,9 +38,11 @@ private:
     bool scrollEvent(QWheelEvent* e);
     void pinchTriggered(QPinchGesture*);
     void closePin();
+    void setPinnedPixmap(const QPixmap& pixmap);
 
     void rotateLeft();
     void rotateRight();
+    void openTools();
 
     void increaseOpacity();
     void decreaseOpacity();
@@ -45,6 +50,7 @@ private:
     QPixmap m_pixmap;
     QVBoxLayout* m_layout;
     QLabel* m_label;
+    QPointer<CaptureWidget> m_editor;
     QGraphicsDropShadowEffect* m_shadowEffect;
     QColor m_baseColor, m_hoverColor;
 

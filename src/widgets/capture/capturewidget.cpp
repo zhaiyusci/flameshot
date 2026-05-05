@@ -31,12 +31,14 @@
 #include <QApplication>
 #include <QCheckBox>
 #include <QDateTime>
+#include <QFileInfo>
 #include <QFontMetrics>
 #include <QMessageBox>
 #include <QPaintEvent>
 #include <QPainter>
 #include <QScreen>
 #include <QShortcut>
+#include <QSizePolicy>
 #include <QWindow>
 
 #if !defined(DISABLE_UPDATE_CHECKER)
@@ -53,12 +55,33 @@
 CaptureWidget::CaptureWidget(const CaptureRequest& req,
                              bool fullScreen,
                              QWidget* parent)
+  : CaptureWidget(req, fullScreen, parent, QPixmap())
+{}
+
+CaptureWidget::CaptureWidget(const CaptureRequest& req,
+                             const QPixmap& sourcePixmap,
+                             QWidget* parent)
+  : CaptureWidget(req, false, parent, sourcePixmap)
+{}
+
+CaptureWidget::CaptureWidget(const CaptureRequest& req,
+                             const QPixmap& sourcePixmap,
+                             bool fullScreen,
+                             QWidget* parent)
+  : CaptureWidget(req, fullScreen, parent, sourcePixmap)
+{}
+
+CaptureWidget::CaptureWidget(const CaptureRequest& req,
+                             bool fullScreen,
+                             QWidget* parent,
+                             const QPixmap& sourcePixmap)
   : QWidget(parent)
   , m_toolSizeByKeyboard(0)
   , m_mouseIsClicked(false)
   , m_captureDone(false)
   , m_closeWithoutCapture(false)
   , m_previewEnabled(true)
+  , m_localImageMode(false)
   , m_adjustmentButtonPressed(false)
   , m_configError(false)
   , m_configErrorResolved(false)
@@ -103,6 +126,7 @@ CaptureWidget::CaptureWidget(const CaptureRequest& req,
     m_uiColor = m_config.uiColor();
     m_contrastUiColor = m_config.contrastUiColor();
     setMouseTracking(true);
+    m_localImageMode = !sourcePixmap.isNull();
     initContext(fullScreen, req);
 
     ScreenGrabber grabber;
@@ -112,23 +136,40 @@ CaptureWidget::CaptureWidget(const CaptureRequest& req,
     // Top left of the whole set of screens
     QPoint topLeft(0, 0);
 #endif
+    if (m_localImageMode) {
+        m_context.screenshot = sourcePixmap;
+        m_context.origScreenshot = sourcePixmap;
+        setWindowTitle(req.data().toString().isEmpty()
+                         ? tr("Flameshot")
+                         : tr("Flameshot - %1")
+                             .arg(QFileInfo(req.data().toString()).fileName()));
+        if (req.hasSelectedMonitor() &&
+            req.selectedMonitor() >= 0 &&
+            req.selectedMonitor() < QGuiApplication::screens().size()) {
+            selectedScreen = QGuiApplication::screens().at(
+              req.selectedMonitor());
+        }
+    }
+
     if (fullScreen) {
         bool ok = true;
-        int preSelectedMonitor;
-        if (req.hasSelectedMonitor()) {
-            preSelectedMonitor = req.selectedMonitor();
-        } else {
-            preSelectedMonitor = -1;
-        }
-        m_context.screenshot =
-          grabber.grabEntireDesktop(ok, preSelectedMonitor);
-        if (!ok) {
-            // Error already logged in ScreenGrabber
-            this->close();
-        }
-        m_context.origScreenshot = m_context.screenshot;
+        if (!m_localImageMode) {
+            int preSelectedMonitor;
+            if (req.hasSelectedMonitor()) {
+                preSelectedMonitor = req.selectedMonitor();
+            } else {
+                preSelectedMonitor = -1;
+            }
+            m_context.screenshot =
+              grabber.grabEntireDesktop(ok, preSelectedMonitor);
+            if (!ok) {
+                // Error already logged in ScreenGrabber
+                this->close();
+            }
+            m_context.origScreenshot = m_context.screenshot;
 
-        selectedScreen = grabber.getSelectedScreen();
+            selectedScreen = grabber.getSelectedScreen();
+        }
 
 #if defined(Q_OS_WIN)
 #if !defined(FLAMESHOT_DEBUG_CAPTURE)
@@ -200,6 +241,18 @@ CaptureWidget::CaptureWidget(const CaptureRequest& req,
             windowHandle()->setScreen(selectedScreen);
         }
 #endif
+    } else if (m_localImageMode) {
+        QSize windowSize = m_context.screenshot.size();
+        if (m_context.screenshot.devicePixelRatio() > 1.0) {
+            windowSize =
+              QSize(m_context.screenshot.width() /
+                      m_context.screenshot.devicePixelRatio(),
+                    m_context.screenshot.height() /
+                      m_context.screenshot.devicePixelRatio());
+        }
+        resize(windowSize);
+        setMinimumSize(windowSize);
+        setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     }
 
     QVector<QRect> areas;
@@ -314,17 +367,22 @@ CaptureWidget::~CaptureWidget()
     }
 #endif
     if (m_captureDone) {
-        auto lastRegion = m_selection->geometry();
-        const qreal scale = m_context.screenshot.devicePixelRatio();
-        lastRegion.setTop(lastRegion.top() * scale);
-        lastRegion.setBottom(lastRegion.bottom() * scale);
-        lastRegion.setLeft(lastRegion.left() * scale);
-        lastRegion.setRight(lastRegion.right() * scale);
-        setLastRegion(lastRegion);
+        if (m_context.fullscreen && !m_localImageMode) {
+            auto lastRegion = m_selection->geometry();
+            const qreal scale = m_context.screenshot.devicePixelRatio();
+            lastRegion.setTop(lastRegion.top() * scale);
+            lastRegion.setBottom(lastRegion.bottom() * scale);
+            lastRegion.setLeft(lastRegion.left() * scale);
+            lastRegion.setRight(lastRegion.right() * scale);
+            setLastRegion(lastRegion);
+        }
         QRect geometry(m_context.selection);
         geometry.setTopLeft(geometry.topLeft() + m_context.widgetOffset);
+        const QPixmap capture = pixmap();
+        emit captureCommitted(capture,
+                              static_cast<int>(m_context.request.tasks()));
         Flameshot::instance()->exportCapture(
-          pixmap(), geometry, m_context.request);
+          capture, geometry, m_context.request);
     } else if (!m_closeWithoutCapture) {
         emit Flameshot::instance() -> captureFailed();
     }
@@ -334,7 +392,11 @@ void CaptureWidget::initButtons()
 {
     auto allButtonTypes = CaptureToolButton::getIterableButtonTypes();
     auto visibleButtonTypes = m_config.buttons();
-    if ((m_context.request.tasks() == CaptureRequest::NO_TASK) ||
+    if (m_localImageMode) {
+        if (!visibleButtonTypes.contains(CaptureTool::TYPE_ACCEPT)) {
+            visibleButtonTypes << CaptureTool::TYPE_ACCEPT;
+        }
+    } else if ((m_context.request.tasks() == CaptureRequest::NO_TASK) ||
         (m_context.request.tasks() == CaptureRequest::PRINT_GEOMETRY)) {
         allButtonTypes.removeOne(CaptureTool::TYPE_ACCEPT);
         visibleButtonTypes.removeOne(CaptureTool::TYPE_ACCEPT);
@@ -1180,9 +1242,14 @@ void CaptureWidget::resizeEvent(QResizeEvent* e)
 {
     QWidget::resizeEvent(e);
     m_context.widgetOffset = mapToGlobal(QPoint(0, 0));
-    if (!m_context.fullscreen) {
+    if (!m_context.fullscreen && m_panel && m_buttonHandler) {
         m_panel->setFixedHeight(height());
         m_buttonHandler->updateScreenRegions(rect());
+        if (m_selection && m_selection->isVisible()) {
+            m_context.selection =
+              extendedRect(m_selection->geometry().intersected(rect()));
+            m_buttonHandler->updatePosition(m_selection->geometry());
+        }
     }
 }
 

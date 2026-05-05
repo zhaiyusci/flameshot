@@ -135,6 +135,11 @@ void TrayIcon::initMenu()
             &QAction::triggered,
             Flameshot::instance(),
             &Flameshot::launcher);
+    m_pinImageAction = new QAction(tr("Pin &Image..."), this);
+    connect(m_pinImageAction,
+            &QAction::triggered,
+            Flameshot::instance(),
+            &Flameshot::pinImage);
     m_ocrJobsAction = new QAction(tr("Background &Tasks"), this);
     connect(m_ocrJobsAction,
             &QAction::triggered,
@@ -196,6 +201,7 @@ void TrayIcon::initMenu()
             &Flameshot::openSavePath);
 
     m_menu->addAction(m_captureAction);
+    m_menu->addAction(m_pinImageAction);
     m_menu->addAction(m_launcherAction);
     m_menu->addAction(m_ocrJobsAction);
     m_menu->addSeparator();
