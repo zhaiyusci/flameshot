@@ -319,7 +319,6 @@ OcrJobManagerWidget::OcrJobManagerWidget(QWidget* parent)
             &OcrJobManagerWidget::clearHistory);
     connect(m_stopOcrWorkerButton, &QPushButton::clicked, this, [this]() {
         OcrTaskWidget::stopMarkerOcrService();
-        OcrTaskWidget::stopPaddleOcrService();
         updateButtons();
         emit stopOcrWorkerRequested();
     });
@@ -575,8 +574,7 @@ void OcrJobManagerWidget::updateButtons()
     m_killAllButton->setEnabled(hasRunningJobs);
     m_clearHistoryButton->setEnabled(hasHistory);
     m_stopOcrWorkerButton->setEnabled(
-      OcrTaskWidget::isMarkerOcrServiceRunning() ||
-      OcrTaskWidget::isPaddleOcrServiceRunning());
+      OcrTaskWidget::isMarkerOcrServiceRunning());
 }
 
 void OcrJobManagerWidget::updateLatexPreview(const Job& job)

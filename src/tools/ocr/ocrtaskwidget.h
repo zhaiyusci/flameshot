@@ -30,9 +30,7 @@ public:
 
     void start();
     void cancelTask();
-    static bool isPaddleOcrServiceRunning();
     static bool isMarkerOcrServiceRunning();
-    static void stopPaddleOcrService();
     static void stopMarkerOcrService();
     using MarkerFormulaCallback = std::function<void(bool,
                                                      const QString&,
@@ -69,7 +67,6 @@ signals:
     void cancelled();
 
 private:
-    void startPaddleOcr();
     void startMarkerOcr();
     void startBarcodeScan();
     void startTextOcr();
@@ -85,17 +82,6 @@ private:
     void handleTextellerServiceFinished(const QString& backendName,
                                         bool ok,
                                         const QString& result);
-    void handlePaddleOcrServiceFinished(bool ok,
-                                        const QString& text,
-                                        const QString& latex,
-                                        const QString& fallbackText,
-                                        const QString& fallbackLatex,
-                                        const QString& resultInfo,
-                                        const QString& fallbackInfo,
-                                        const QString& extraText,
-                                        const QString& extraLatex,
-                                        const QString& extraInfo,
-                                        const QString& error);
     void handleMarkerOcrServiceFinished(bool ok,
                                         const QString& text,
                                         const QString& latex,
@@ -115,15 +101,15 @@ private:
     void failTask(const QString& error);
     void completeTextOcr(const QString& text);
     void completeLatexOcr(const QString& latex);
-    void completePaddleOcr(const QString& text,
-                           const QString& latex,
-                           const QString& fallbackText,
-                           const QString& fallbackLatex,
-                           const QString& resultInfo,
-                           const QString& fallbackInfo,
-                           const QString& extraText,
-                           const QString& extraLatex,
-                           const QString& extraInfo);
+    void completeStructuredOcr(const QString& text,
+                               const QString& latex,
+                               const QString& fallbackText,
+                               const QString& fallbackLatex,
+                               const QString& resultInfo,
+                               const QString& fallbackInfo,
+                               const QString& extraText,
+                               const QString& extraLatex,
+                               const QString& extraInfo);
     void completeBarcodeScan(const QString& result);
     void cleanupProcess();
     void cleanupImage();
@@ -132,8 +118,6 @@ private:
     Kind m_kind;
     QPixmap m_capture;
     QProcess* m_process = nullptr;
-    int m_paddleOcrRequestId = 0;
-    bool m_paddleOcrRequestTimedOut = false;
     int m_markerOcrRequestId = 0;
     bool m_markerOcrRequestTimedOut = false;
     int m_textellerRequestId = 0;

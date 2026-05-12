@@ -140,8 +140,6 @@ public:
     CONFIG_GETTER_SETTER(jpegQuality, setJpegQuality, int)
     CONFIG_GETTER_SETTER(reverseArrow, setReverseArrow, bool)
     CONFIG_GETTER_SETTER(insecurePixelate, setInsecurePixelate, bool)
-    CONFIG_GETTER_SETTER(paddleOcrPython, setPaddleOcrPython, QString)
-    CONFIG_GETTER_SETTER(paddleOcrCache, setPaddleOcrCache, QString)
     CONFIG_GETTER_SETTER(ocrBackend, setOcrBackend, QString)
     CONFIG_GETTER_SETTER(markerOcrPython, setMarkerOcrPython, QString)
     CONFIG_GETTER_SETTER(markerOcrCache, setMarkerOcrCache, QString)

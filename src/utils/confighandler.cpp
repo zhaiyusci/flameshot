@@ -135,8 +135,6 @@ static QMap<class QString, QSharedPointer<ValueHandler>>
     OPTION("reverseArrow"                ,Bool               ( false         )),
     OPTION("insecurePixelate"            ,Bool               ( false         )),
     OPTION("ocrBackend"                  ,String             ( "auto"        )),
-    OPTION("paddleOcrPython"             ,String             ( ""            )),
-    OPTION("paddleOcrCache"              ,String             ( ""            )),
     OPTION("markerOcrPython"             ,String             ( ""            )),
     OPTION("markerOcrCache"              ,String             ( ""            )),
     OPTION("markerOcrThreads"            ,BoundedInt         ( 1,128,8       )),

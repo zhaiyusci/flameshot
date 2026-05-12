@@ -106,16 +106,6 @@ bool textellerServiceEnabled()
            enabled != QStringLiteral("no") && enabled != QStringLiteral("off");
 }
 
-int paddleOcrTimeoutMs()
-{
-    bool ok = false;
-    const int timeout =
-      QProcessEnvironment::systemEnvironment()
-        .value(QStringLiteral("FLAMESHOT_PADDLEOCR_TIMEOUT_MS"))
-        .toInt(&ok);
-    return ok && timeout > 0 ? timeout : 300000;
-}
-
 int markerOcrTimeoutMs()
 {
     bool ok = false;
@@ -124,16 +114,6 @@ int markerOcrTimeoutMs()
         .value(QStringLiteral("FLAMESHOT_MARKER_OCR_TIMEOUT_MS"))
         .toInt(&ok);
     return ok && timeout > 0 ? timeout : 300000;
-}
-
-int paddleOcrIdleTimeoutMs()
-{
-    bool ok = false;
-    const int timeout =
-      QProcessEnvironment::systemEnvironment()
-        .value(QStringLiteral("FLAMESHOT_PADDLEOCR_IDLE_TIMEOUT_MS"))
-        .toInt(&ok);
-    return ok && timeout > 0 ? timeout : 30 * 60 * 1000;
 }
 
 int markerOcrIdleTimeoutMs()
@@ -1040,100 +1020,9 @@ QString executablePathIfUsable(const QString& path)
     return {};
 }
 
-QString paddleOcrPython()
-{
-    const QString configured =
-      QProcessEnvironment::systemEnvironment()
-        .value(QStringLiteral("FLAMESHOT_PADDLEOCR_PYTHON"))
-        .trimmed();
-    if (!configured.isEmpty()) {
-        const QString executable = executablePathIfUsable(configured);
-        if (!executable.isEmpty()) {
-            return executable;
-        }
-        return configured;
-    }
-
-    const QString configuredInRc = ConfigHandler().paddleOcrPython().trimmed();
-    if (!configuredInRc.isEmpty()) {
-        const QString executable = executablePathIfUsable(configuredInRc);
-        if (!executable.isEmpty()) {
-            return executable;
-        }
-        return configuredInRc;
-    }
-
-    const QDir appDir(QCoreApplication::applicationDirPath());
-    const QDir currentDir(QDir::currentPath());
-    const QStringList candidates = {
-        appDir.absoluteFilePath(
-          QStringLiteral("../../../.venv-paddleocr/bin/python")),
-        currentDir.absoluteFilePath(
-          QStringLiteral("../.venv-paddleocr/bin/python")),
-        currentDir.absoluteFilePath(
-          QStringLiteral(".venv-paddleocr/bin/python")),
-        QDir::home().filePath(
-          QStringLiteral(".local/share/flameshot-ocr-backends/"
-                         "paddleocr/bin/python")),
-    };
-    for (const QString& candidate : candidates) {
-        const QString executable = executablePathIfUsable(candidate);
-        if (!executable.isEmpty()) {
-            return executable;
-        }
-    }
-
-    const QString python3 =
-      QStandardPaths::findExecutable(QStringLiteral("python3"));
-    if (!python3.isEmpty()) {
-        return python3;
-    }
-    return QStandardPaths::findExecutable(QStringLiteral("python"));
-}
-
-QString paddleOcrCacheHome()
-{
-    const QString configured =
-      QProcessEnvironment::systemEnvironment()
-        .value(QStringLiteral("FLAMESHOT_PADDLEOCR_CACHE"))
-        .trimmed();
-    if (!configured.isEmpty()) {
-        return configured;
-    }
-
-    const QString configuredInRc = ConfigHandler().paddleOcrCache().trimmed();
-    if (!configuredInRc.isEmpty()) {
-        return configuredInRc;
-    }
-
-    const QDir appDir(QCoreApplication::applicationDirPath());
-    const QDir currentDir(QDir::currentPath());
-    const QStringList candidates = {
-        appDir.absoluteFilePath(QStringLiteral("../../../.cache/paddlex")),
-        currentDir.absoluteFilePath(QStringLiteral("../.cache/paddlex")),
-        currentDir.absoluteFilePath(QStringLiteral(".cache/paddlex")),
-    };
-    for (const QString& candidate : candidates) {
-        if (QFileInfo(candidate).isDir()) {
-            return QFileInfo(candidate).absoluteFilePath();
-        }
-    }
-
-    return QDir::home().filePath(QStringLiteral(".cache/flameshot/paddlex"));
-}
-
 QString markerExecutable()
 {
-    return firstExistingExecutable(
-      QStringLiteral("marker_single"),
-      { QDir::homePath() +
-          QStringLiteral(
-            "/.local/share/flameshot-ocr-backends/marker-py311/bin/"
-            "marker_single"),
-        QDir::homePath() +
-          QStringLiteral(
-            "/.local/share/flameshot-ocr-backends/marker/bin/"
-            "marker_single") });
+    return QStandardPaths::findExecutable(QStringLiteral("marker_single"));
 }
 
 QString markerOcrPython()
@@ -1422,432 +1311,6 @@ if isinstance(result, list):
     print("\n".join(str(item) for item in result))
 else:
     print(result)
-)PY");
-}
-
-QString paddleOcrServicePythonScript()
-{
-    return QStringLiteral(R"PY(
-import json
-import os
-import re
-import sys
-import traceback
-
-os.environ.setdefault("NO_ALBUMENTATIONS_UPDATE", "1")
-os.environ.setdefault("PADDLE_PDX_MODEL_SOURCE", "bos")
-os.environ.setdefault("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK", "True")
-
-def log(message):
-    print("flameshot-paddleocr-worker: " + str(message), file=sys.stderr, flush=True)
-
-def send(payload):
-    print(json.dumps(payload, ensure_ascii=False), flush=True)
-
-structure_pipeline = None
-text_pipeline = None
-formula_pipeline = None
-
-def result_dict(result):
-    data = getattr(result, "json", {})
-    if callable(data):
-        data = data()
-    if isinstance(data, dict):
-        return data.get("res", data)
-    return {}
-
-def result_markdown(result):
-    to_markdown = getattr(result, "_to_markdown", None)
-    if callable(to_markdown):
-        try:
-            markdown = to_markdown(pretty=False, show_formula_number=False)
-            if isinstance(markdown, dict):
-                return markdown
-        except TypeError:
-            try:
-                markdown = to_markdown()
-                if isinstance(markdown, dict):
-                    return markdown
-            except Exception as error:
-                log("to_markdown failed: " + str(error))
-        except Exception as error:
-            log("to_markdown failed: " + str(error))
-    markdown = getattr(result, "markdown", {})
-    if callable(markdown):
-        markdown = markdown()
-    return markdown if isinstance(markdown, dict) else {}
-
-def markdown_text(value):
-    if isinstance(value, dict):
-        value = (
-            value.get("markdown_texts")
-            or value.get("markdown_text")
-            or value.get("text")
-            or ""
-        )
-    if isinstance(value, list):
-        return "\n".join(str(part) for part in value if str(part).strip())
-    return str(value or "")
-
-VISUAL_BLOCK_LABELS = {
-    "chart",
-    "image",
-    "figure",
-    "table",
-    "seal",
-}
-
-FORMULA_BLOCK_LABELS = {
-    "display_formula",
-    "formula",
-    "formula_number",
-    "inline_formula",
-    "equation",
-}
-
-def normalize_markdown(text):
-    return str(text or "").strip()
-
-def markdown_formula_marker_count(text):
-    text = str(text or "")
-    return len(
-        re.findall(
-            r"\$\$[\s\S]+?\$\$|\\\[[\s\S]+?\\\]|\\\([\s\S]+?\\\)|"
-            r"(?<!\$)\$[^$\n]{1,300}\$(?!\$)",
-            text,
-        )
-    )
-
-def average_score(scores):
-    valid = []
-    for score in scores or []:
-        try:
-            value = float(score)
-        except Exception:
-            continue
-        if 0.0 <= value <= 1.0:
-            valid.append(value)
-    if not valid:
-        return 0.0
-    return sum(valid) / len(valid)
-
-def structure_markdown(pipeline, outputs):
-    markdown_list = []
-    visual_block_count = 0
-    formula_block_count = 0
-    layout_scores = []
-    ocr_scores = []
-    for result in outputs or []:
-        markdown = result_markdown(result)
-        if markdown:
-            markdown_list.append(markdown)
-        data = result_dict(result)
-        for block in data.get("parsing_res_list") or []:
-            label = str(block.get("block_label") or "").strip().lower()
-            if label in FORMULA_BLOCK_LABELS:
-                formula_block_count += 1
-            if label in VISUAL_BLOCK_LABELS:
-                visual_block_count += 1
-        for box in (data.get("layout_det_res") or {}).get("boxes") or []:
-            if "score" in box:
-                layout_scores.append(box.get("score"))
-        ocr_res = data.get("overall_ocr_res") or {}
-        rec_texts = ocr_res.get("rec_texts") or []
-        rec_scores = ocr_res.get("rec_scores") or []
-        for index, text in enumerate(rec_texts):
-            if str(text).strip() and index < len(rec_scores):
-                ocr_scores.append(rec_scores[index])
-
-    markdown = ""
-    if markdown_list:
-        try:
-            combined = pipeline.concatenate_markdown_pages(markdown_list)
-            markdown = markdown_text(combined)
-        except Exception as error:
-            log("concatenate markdown failed: " + str(error))
-        if not markdown:
-            markdown = "\n\n".join(markdown_text(item) for item in markdown_list)
-
-    markdown = normalize_markdown(markdown)
-    formula_marker_count = markdown_formula_marker_count(markdown)
-    non_text_block_count = visual_block_count + formula_block_count
-    score = max(average_score(ocr_scores), average_score(layout_scores))
-    if formula_block_count > 0 or formula_marker_count > 0:
-        score = max(score, 1.0)
-    if visual_block_count > 0 and formula_block_count == 0 and formula_marker_count == 0:
-        score *= 0.5
-    if not markdown:
-        score = 0.0
-    log(
-        "structure markdown: chars="
-        + str(len(markdown))
-        + ", formulaBlocks="
-        + str(formula_block_count)
-        + ", mathMarkers="
-        + str(formula_marker_count)
-        + ", score="
-        + ("%.3f" % score)
-    )
-    return markdown, non_text_block_count, score
-
-def text_content(outputs):
-    parts = []
-    scores = []
-    for result in outputs or []:
-        data = result_dict(result)
-        texts = data.get("rec_texts") or []
-        rec_scores = data.get("rec_scores") or []
-        if isinstance(texts, list):
-            for index, item in enumerate(texts):
-                text = str(item).strip()
-                if not text:
-                    continue
-                parts.append(text)
-                if index < len(rec_scores):
-                    scores.append(rec_scores[index])
-        elif str(texts).strip():
-            parts.append(str(texts))
-    return "\n".join(parts).strip(), average_score(scores)
-
-def formula_content(outputs):
-    parts = []
-    for result in outputs or []:
-        data = result_dict(result)
-        direct = str(data.get("rec_formula") or "").strip()
-        if direct:
-            parts.append(direct)
-        for item in data.get("formula_res_list") or []:
-            latex = str(item.get("rec_formula") or "").strip()
-            if latex:
-                parts.append(latex)
-    return "\n".join(parts).strip()
-
-def init_structure_pipeline():
-    global structure_pipeline
-    if structure_pipeline is None:
-        from paddleocr import PPStructureV3
-        log("load PPStructureV3 begin")
-        structure_pipeline = PPStructureV3(
-            layout_detection_model_name=os.environ.get(
-                "FLAMESHOT_PADDLEOCR_LAYOUT_MODEL", "PP-DocLayout-M"
-            ),
-            text_detection_model_name=os.environ.get(
-                "FLAMESHOT_PADDLEOCR_TEXT_DET_MODEL", "PP-OCRv5_mobile_det"
-            ),
-            text_recognition_model_name=os.environ.get(
-                "FLAMESHOT_PADDLEOCR_TEXT_REC_MODEL", "PP-OCRv5_mobile_rec"
-            ),
-            formula_recognition_model_name=os.environ.get(
-                "FLAMESHOT_PADDLEOCR_FORMULA_MODEL", "PP-FormulaNet_plus-S"
-            ),
-            use_doc_orientation_classify=False,
-            use_doc_unwarping=False,
-            use_textline_orientation=False,
-            use_table_recognition=False,
-            use_seal_recognition=False,
-            use_chart_recognition=False,
-            use_region_detection=False,
-            use_formula_recognition=True,
-            format_block_content=True,
-        )
-        log("load PPStructureV3 done")
-    return structure_pipeline
-
-def init_text_pipeline():
-    global text_pipeline
-    if text_pipeline is None:
-        from paddleocr import PaddleOCR
-        log("load PaddleOCR text pipeline begin")
-        text_pipeline = PaddleOCR(
-            text_detection_model_name=os.environ.get(
-                "FLAMESHOT_PADDLEOCR_TEXT_DET_MODEL", "PP-OCRv5_mobile_det"
-            ),
-            text_recognition_model_name=os.environ.get(
-                "FLAMESHOT_PADDLEOCR_TEXT_REC_MODEL", "PP-OCRv5_mobile_rec"
-            ),
-            use_doc_orientation_classify=False,
-            use_doc_unwarping=False,
-            use_textline_orientation=False,
-        )
-        log("load PaddleOCR text pipeline done")
-    return text_pipeline
-
-def init_formula_pipeline():
-    global formula_pipeline
-    if formula_pipeline is None:
-        from paddleocr import FormulaRecognitionPipeline
-        log("load formula pipeline begin")
-        formula_pipeline = FormulaRecognitionPipeline(
-            formula_recognition_model_name=os.environ.get(
-                "FLAMESHOT_PADDLEOCR_FORMULA_MODEL", "PP-FormulaNet_plus-S"
-            ),
-            use_doc_orientation_classify=False,
-            use_doc_unwarping=False,
-            use_layout_detection=False,
-        )
-        log("load formula pipeline done")
-    return formula_pipeline
-
-def truthy_env(name, default):
-    value = os.environ.get(name)
-    if value is None:
-        return default
-    return value.strip().lower() in ("1", "true", "yes", "on")
-
-def result_page(label, text="", latex="", score=0.0, error=""):
-    return {
-        "label": label,
-        "text": str(text or "").strip(),
-        "latex": str(latex or "").strip(),
-        "score": float(score or 0.0),
-        "error": str(error or "").strip(),
-    }
-
-def page_has_content(page):
-    return bool(page.get("text") or page.get("latex"))
-
-def combined_page_text(page):
-    text = page.get("text") or ""
-    latex = page.get("latex") or ""
-    if text and latex:
-        return text + "\n\nLaTeX:\n" + latex
-    return text or latex
-
-def route_label(page):
-    label = page.get("label") or "OCR"
-    error = page.get("error") or ""
-    if error:
-        return label + " failed"
-    return label
-
-def choose_pages(pages):
-    usable = [page for page in pages if page_has_content(page)]
-    if not usable:
-        return result_page("OCR"), result_page("Fallback")
-    usable.sort(
-        key=lambda page: (
-            page.get("score", 0.0),
-            len(combined_page_text(page)),
-        ),
-        reverse=True,
-    )
-    primary = usable[0]
-    fallback = usable[1] if len(usable) > 1 else result_page("Fallback")
-    return primary, fallback
-
-def error_page(label, error):
-    return result_page(label, text=label + " failed:\n" + str(error), score=0.0)
-
-def formula_markdown_from_latex(latex):
-    latex = str(latex or "").strip()
-    if not latex:
-        return ""
-    return "$$\n" + latex + "\n$$"
-
-def recognize(image_path, formula_image_path):
-    use_structure = truthy_env("FLAMESHOT_PADDLEOCR_STRUCTURE", True)
-    structure_page = result_page(
-        "Structure Markdown",
-        text="Structure Markdown failed:\nPPStructureV3 is disabled.",
-    )
-    formula_page = result_page("Formula OCR", text="No formula was recognized.")
-    text_page = result_page("Text OCR", text="No text was recognized.")
-
-    try:
-        log("text predict begin: " + image_path)
-        text, text_score = text_content(init_text_pipeline().predict(input=image_path))
-        log("text predict done")
-        text_page = result_page(
-            "Text OCR",
-            text=text if text else "No text was recognized.",
-            score=text_score,
-        )
-    except Exception as error:
-        log("text predict failed: " + str(error))
-        text_page = error_page("Text OCR", error)
-
-    if use_structure:
-        try:
-            log("structure predict begin: " + image_path)
-            pipeline = init_structure_pipeline()
-            structure_text, structure_non_text_count, structure_score = structure_markdown(
-                pipeline,
-                pipeline.predict(input=image_path)
-            )
-            _ = structure_non_text_count
-            log("structure predict done")
-            structure_page = result_page(
-                "Structure Markdown",
-                text=structure_text if structure_text else "No structure Markdown was recognized.",
-                score=structure_score,
-            )
-        except Exception as error:
-            log("structure predict failed: " + str(error))
-            structure_page = error_page("Structure Markdown", error)
-
-    try:
-        if formula_image_path:
-            log("formula predict begin: " + formula_image_path)
-            latex = formula_content(
-                init_formula_pipeline().predict(input=formula_image_path)
-            )
-            log("formula predict done")
-            formula_page = result_page(
-                "Formula OCR",
-                text=formula_markdown_from_latex(latex) or "No formula was recognized.",
-                score=1.0 if latex else 0.0,
-            )
-    except Exception as error:
-        log("formula predict failed: " + str(error))
-        formula_page = error_page("Formula OCR", error)
-
-    return structure_page, formula_page, text_page
-
-send({"type": "ready"})
-
-for line in sys.stdin:
-    line = line.strip()
-    if not line:
-        continue
-    request = {}
-    try:
-        request = json.loads(line)
-        if request.get("cmd") == "quit":
-            break
-        request_id = request.get("id")
-        image_path = request.get("image") or ""
-        formula_image_path = request.get("formula_image") or ""
-        if not image_path:
-            send({
-                "type": "result",
-                "id": request_id,
-                "ok": False,
-                "error": "empty image path",
-            })
-            continue
-        structure_page, formula_page, text_page = recognize(image_path, formula_image_path)
-        send({
-            "type": "result",
-            "id": request_id,
-            "ok": True,
-            "text": structure_page.get("text", ""),
-            "latex": structure_page.get("latex", ""),
-            "result_info": route_label(structure_page),
-            "fallback_text": formula_page.get("text", ""),
-            "fallback_latex": formula_page.get("latex", ""),
-            "fallback_info": route_label(formula_page),
-            "extra_text": text_page.get("text", ""),
-            "extra_latex": text_page.get("latex", ""),
-            "extra_info": route_label(text_page),
-        })
-    except Exception as error:
-        send({
-            "type": "result",
-            "id": request.get("id"),
-            "ok": False,
-            "error": str(error),
-            "traceback": traceback.format_exc(),
-        })
 )PY");
 }
 
@@ -2728,10 +2191,6 @@ QProcessEnvironment ocrProcessEnvironment()
                            QDir::homePath() +
                              QStringLiteral("/.cache/flameshot/ultralytics"));
     }
-    if (!environment.contains(QStringLiteral("PADDLE_PDX_CACHE_HOME"))) {
-        environment.insert(QStringLiteral("PADDLE_PDX_CACHE_HOME"),
-                           paddleOcrCacheHome());
-    }
     if (!environment.contains(QStringLiteral("MODEL_CACHE_DIR"))) {
         environment.insert(QStringLiteral("MODEL_CACHE_DIR"),
                            markerOcrCacheHome());
@@ -2745,17 +2204,6 @@ QProcessEnvironment ocrProcessEnvironment()
                            QDir::homePath() +
                              QStringLiteral("/.cache/flameshot/modelscope"));
     }
-    if (!environment.contains(QStringLiteral("PADDLE_PDX_MODEL_SOURCE"))) {
-        environment.insert(QStringLiteral("PADDLE_PDX_MODEL_SOURCE"),
-                           QStringLiteral("bos"));
-    }
-    if (!environment.contains(
-          QStringLiteral("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK"))) {
-        environment.insert(
-          QStringLiteral("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK"),
-          QStringLiteral("True"));
-    }
-    QDir().mkpath(environment.value(QStringLiteral("PADDLE_PDX_CACHE_HOME")));
     QDir().mkpath(environment.value(QStringLiteral("MODEL_CACHE_DIR")));
     QDir().mkpath(environment.value(QStringLiteral("HF_HOME")));
     QDir().mkpath(environment.value(QStringLiteral("MPLCONFIGDIR")));
@@ -3111,7 +2559,7 @@ TextellerService* textellerService()
     return service;
 }
 
-class PaddleOcrService : public QObject
+class MarkerOcrService : public QObject
 {
 public:
     using Callback = std::function<void(bool,
@@ -3125,437 +2573,6 @@ public:
                                         const QString&,
                                         const QString&,
                                         const QString&)>;
-
-    explicit PaddleOcrService(QObject* parent = nullptr)
-      : QObject(parent)
-      , m_idleTimer(new QTimer(this))
-    {
-        m_idleTimer->setSingleShot(true);
-        connect(m_idleTimer, &QTimer::timeout, this, [this]() {
-            AbstractLogger::info(AbstractLogger::Stderr) << QObject::tr(
-              "PaddleOCR worker idle timeout reached; stopping.");
-            stopProcess();
-        });
-    }
-
-    int recognize(const QString& imagePath,
-                  const QString& formulaImagePath,
-                  Callback callback)
-    {
-        m_idleTimer->stop();
-        Request request;
-        request.id = m_nextRequestId++;
-        request.imagePath = imagePath;
-        request.formulaImagePath = formulaImagePath;
-        request.callback = std::move(callback);
-        m_queue.append(request);
-        ensureProcess();
-        startNextRequest();
-        return request.id;
-    }
-
-    void cancel(int id)
-    {
-        for (int i = 0; i < m_queue.size(); ++i) {
-            if (m_queue.at(i).id != id) {
-                continue;
-            }
-            const Request request = m_queue.takeAt(i);
-            if (request.callback) {
-                request.callback(false,
-                                 QString(),
-                                 QString(),
-                                 QString(),
-                                 QString(),
-                                 QString(),
-                                 QString(),
-                                 QString(),
-                                 QString(),
-                                 QString(),
-                                 QObject::tr("PaddleOCR task cancelled"));
-            }
-            return;
-        }
-
-        if (m_current.id == id) {
-            const Callback callback = m_current.callback;
-            m_current = {};
-            if (callback) {
-                callback(false,
-                         QString(),
-                         QString(),
-                         QString(),
-                         QString(),
-                         QString(),
-                         QString(),
-                         QString(),
-                         QString(),
-                         QString(),
-                         QObject::tr("PaddleOCR task cancelled"));
-            }
-            stopProcess();
-            if (!m_queue.isEmpty()) {
-                ensureProcess();
-            }
-            startNextRequest();
-        }
-    }
-
-    void stop()
-    {
-        for (const Request& request : m_queue) {
-            if (request.callback) {
-                request.callback(false,
-                                 QString(),
-                                 QString(),
-                                 QString(),
-                                 QString(),
-                                 QString(),
-                                 QString(),
-                                 QString(),
-                                 QString(),
-                                 QString(),
-                                 QObject::tr("PaddleOCR worker was stopped"));
-            }
-        }
-        m_queue.clear();
-        if (m_current.id != 0 && m_current.callback) {
-            m_current.callback(false,
-                               QString(),
-                               QString(),
-                               QString(),
-                               QString(),
-                               QString(),
-                               QString(),
-                               QString(),
-                               QString(),
-                               QString(),
-                               QObject::tr("PaddleOCR worker was stopped"));
-        }
-        m_current = {};
-        stopProcess();
-    }
-
-    bool isRunning() const
-    {
-        return m_process && m_process->state() != QProcess::NotRunning;
-    }
-
-private:
-    struct Request
-    {
-        int id = 0;
-        QString imagePath;
-        QString formulaImagePath;
-        Callback callback;
-    };
-
-    void ensureProcess()
-    {
-        if (m_process && m_process->state() != QProcess::NotRunning) {
-            return;
-        }
-
-        const QString python = paddleOcrPython();
-        if (python.isEmpty()) {
-            failPending(QObject::tr(
-              "PaddleOCR requires Python with paddleocr installed."));
-            return;
-        }
-
-        m_idleTimer->stop();
-        m_ready = false;
-        m_stdoutBuffer.clear();
-        m_process = new QProcess(this);
-        m_process->setProcessEnvironment(ocrProcessEnvironment());
-
-        connect(m_process, &QProcess::started, this, [this]() {
-            AbstractLogger::info(AbstractLogger::Stderr)
-              << QObject::tr("PaddleOCR worker started: pid=%1.")
-                   .arg(QString::number(m_process->processId()));
-        });
-        connect(m_process, &QProcess::readyReadStandardOutput, this, [this]() {
-            drainStdout();
-        });
-        connect(m_process, &QProcess::readyReadStandardError, this, [this]() {
-            drainStderr();
-        });
-        connect(m_process,
-                &QProcess::finished,
-                this,
-                [this](int exitCode, QProcess::ExitStatus exitStatus) {
-                    handleFinished(exitCode, exitStatus);
-                });
-
-        AbstractLogger::info(AbstractLogger::Stderr)
-          << QObject::tr("PaddleOCR worker launching: program=%1.").arg(python);
-        m_process->start(python,
-                         { QStringLiteral("-u"),
-                           QStringLiteral("-c"),
-                           paddleOcrServicePythonScript() });
-    }
-
-    void startNextRequest()
-    {
-        if (!m_ready || m_current.id != 0 || m_queue.isEmpty() || !m_process ||
-            m_process->state() != QProcess::Running) {
-            return;
-        }
-
-        m_current = m_queue.takeFirst();
-        QJsonObject request;
-        request.insert(QStringLiteral("cmd"), QStringLiteral("recognize"));
-        request.insert(QStringLiteral("id"), m_current.id);
-        request.insert(QStringLiteral("image"), m_current.imagePath);
-        request.insert(QStringLiteral("formula_image"),
-                       m_current.formulaImagePath);
-        const QByteArray line =
-          QJsonDocument(request).toJson(QJsonDocument::Compact) + '\n';
-        m_process->write(line);
-    }
-
-    void drainStdout()
-    {
-        if (!m_process) {
-            return;
-        }
-
-        m_stdoutBuffer += QString::fromUtf8(m_process->readAllStandardOutput());
-        int newline = m_stdoutBuffer.indexOf(QLatin1Char('\n'));
-        while (newline >= 0) {
-            const QString line = m_stdoutBuffer.left(newline).trimmed();
-            m_stdoutBuffer.remove(0, newline + 1);
-            handleProtocolLine(line);
-            newline = m_stdoutBuffer.indexOf(QLatin1Char('\n'));
-        }
-    }
-
-    void drainStderr()
-    {
-        if (!m_process) {
-            return;
-        }
-
-        const QString chunk =
-          QString::fromLocal8Bit(m_process->readAllStandardError());
-        const QStringList lines =
-          chunk.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
-        for (QString line : lines) {
-            line = line.trimmed();
-            if (line.isEmpty()) {
-                continue;
-            }
-            AbstractLogger::info(AbstractLogger::Stderr)
-              << QObject::tr("PaddleOCR worker stderr: %1").arg(line.left(500));
-        }
-    }
-
-    void handleProtocolLine(const QString& line)
-    {
-        if (line.isEmpty()) {
-            return;
-        }
-
-        QJsonParseError parseError;
-        const QJsonDocument document =
-          QJsonDocument::fromJson(line.toUtf8(), &parseError);
-        if (parseError.error != QJsonParseError::NoError ||
-            !document.isObject()) {
-            AbstractLogger::warning(AbstractLogger::Stderr)
-              << QObject::tr("PaddleOCR worker returned non-JSON output: %1")
-                   .arg(line.left(500));
-            return;
-        }
-
-        const QJsonObject object = document.object();
-        const QString type = object.value(QStringLiteral("type")).toString();
-        if (type == QStringLiteral("ready")) {
-            m_ready = true;
-            AbstractLogger::info(AbstractLogger::Stderr)
-              << QObject::tr("PaddleOCR worker ready.");
-            startNextRequest();
-            return;
-        }
-
-        if (type != QStringLiteral("result")) {
-            return;
-        }
-
-        const int id = object.value(QStringLiteral("id")).toInt();
-        if (m_current.id == 0 || id != m_current.id) {
-            AbstractLogger::warning(AbstractLogger::Stderr)
-              << QObject::tr(
-                   "PaddleOCR worker returned an unexpected result id: %1")
-                   .arg(QString::number(id));
-            return;
-        }
-
-        const Callback callback = m_current.callback;
-        const bool ok = object.value(QStringLiteral("ok")).toBool();
-        const QString text = object.value(QStringLiteral("text")).toString();
-        const QString latex = object.value(QStringLiteral("latex")).toString();
-        const QString fallbackText =
-          object.value(QStringLiteral("fallback_text")).toString();
-        const QString fallbackLatex =
-          object.value(QStringLiteral("fallback_latex")).toString();
-        const QString resultInfo =
-          object.value(QStringLiteral("result_info")).toString();
-        const QString fallbackInfo =
-          object.value(QStringLiteral("fallback_info")).toString();
-        const QString extraText =
-          object.value(QStringLiteral("extra_text")).toString();
-        const QString extraLatex =
-          object.value(QStringLiteral("extra_latex")).toString();
-        const QString extraInfo =
-          object.value(QStringLiteral("extra_info")).toString();
-        QString error = object.value(QStringLiteral("error")).toString();
-        const QString traceback =
-          object.value(QStringLiteral("traceback")).toString();
-        if (!traceback.isEmpty()) {
-            AbstractLogger::warning(AbstractLogger::Stderr)
-              << QObject::tr("PaddleOCR worker traceback: %1")
-                   .arg(traceback.left(1200));
-        }
-        if (!ok && error.isEmpty()) {
-            error = QObject::tr("PaddleOCR failed.");
-        }
-
-        m_current = {};
-        if (callback) {
-            callback(ok,
-                     text,
-                     latex,
-                     fallbackText,
-                     fallbackLatex,
-                     resultInfo,
-                     fallbackInfo,
-                     extraText,
-                     extraLatex,
-                     extraInfo,
-                     error);
-        }
-
-        if (m_queue.isEmpty()) {
-            const int idleTimeout = paddleOcrIdleTimeoutMs();
-            AbstractLogger::info(AbstractLogger::Stderr)
-              << QObject::tr("PaddleOCR worker idle timer started: %1 ms.")
-                   .arg(QString::number(idleTimeout));
-            m_idleTimer->start(idleTimeout);
-        }
-        startNextRequest();
-    }
-
-    void handleFinished(int exitCode, QProcess::ExitStatus exitStatus)
-    {
-        Q_UNUSED(exitCode)
-        Q_UNUSED(exitStatus)
-
-        if (m_process) {
-            m_process->deleteLater();
-            m_process = nullptr;
-        }
-        m_ready = false;
-        m_stdoutBuffer.clear();
-
-        if (m_current.id != 0) {
-            const Callback callback = m_current.callback;
-            m_current = {};
-            if (callback) {
-                callback(false,
-                         QString(),
-                         QString(),
-                         QString(),
-                         QString(),
-                         QString(),
-                         QString(),
-                         QString(),
-                         QString(),
-                         QString(),
-                         QObject::tr("PaddleOCR worker exited unexpectedly"));
-            }
-        }
-
-        if (!m_queue.isEmpty()) {
-            ensureProcess();
-        }
-    }
-
-    void failPending(const QString& error)
-    {
-        for (const Request& request : m_queue) {
-            if (request.callback) {
-                request.callback(false,
-                                 QString(),
-                                 QString(),
-                                 QString(),
-                                 QString(),
-                                 QString(),
-                                 QString(),
-                                 QString(),
-                                 QString(),
-                                 QString(),
-                                 error);
-            }
-        }
-        m_queue.clear();
-        if (m_current.id != 0 && m_current.callback) {
-            m_current.callback(false,
-                               QString(),
-                               QString(),
-                               QString(),
-                               QString(),
-                               QString(),
-                               QString(),
-                               QString(),
-                               QString(),
-                               QString(),
-                               error);
-        }
-        m_current = {};
-    }
-
-    void stopProcess()
-    {
-        m_idleTimer->stop();
-        if (!m_process) {
-            m_ready = false;
-            return;
-        }
-
-        m_process->disconnect(this);
-        if (m_process->state() != QProcess::NotRunning) {
-            m_process->write("{\"cmd\":\"quit\"}\n");
-            m_process->closeWriteChannel();
-            if (!m_process->waitForFinished(1500)) {
-                m_process->kill();
-                m_process->waitForFinished(1000);
-            }
-        }
-        m_process->deleteLater();
-        m_process = nullptr;
-        m_ready = false;
-        m_stdoutBuffer.clear();
-    }
-
-    QProcess* m_process = nullptr;
-    QTimer* m_idleTimer = nullptr;
-    QList<Request> m_queue;
-    Request m_current;
-    QString m_stdoutBuffer;
-    int m_nextRequestId = 1;
-    bool m_ready = false;
-};
-
-PaddleOcrService* paddleOcrService()
-{
-    static PaddleOcrService* service = new PaddleOcrService(qApp);
-    return service;
-}
-
-class MarkerOcrService : public QObject
-{
-public:
-    using Callback = PaddleOcrService::Callback;
 
     explicit MarkerOcrService(QObject* parent = nullptr)
       : QObject(parent)
@@ -4050,19 +3067,9 @@ OcrTaskWidget::~OcrTaskWidget()
     cleanupImage();
 }
 
-void OcrTaskWidget::stopPaddleOcrService()
-{
-    paddleOcrService()->stop();
-}
-
 void OcrTaskWidget::stopMarkerOcrService()
 {
     markerOcrService()->stop();
-}
-
-bool OcrTaskWidget::isPaddleOcrServiceRunning()
-{
-    return paddleOcrService()->isRunning();
 }
 
 bool OcrTaskWidget::isMarkerOcrServiceRunning()
@@ -4168,12 +3175,14 @@ void OcrTaskWidget::start()
 
     const QString backend = configuredOcrBackend();
     if (backend == QStringLiteral("marker") ||
-        (backend == QStringLiteral("auto") && !markerOcrPython().isEmpty())) {
+        backend == QStringLiteral("auto")) {
         startMarkerOcr();
         return;
     }
 
-    startPaddleOcr();
+    failTask(tr("Unsupported OCR backend '%1'. Marker is the only supported "
+                "OCR backend.")
+               .arg(backend));
 }
 
 void OcrTaskWidget::startBarcodeScan()
@@ -4206,88 +3215,6 @@ void OcrTaskWidget::startBarcodeScan()
         thread->deleteLater();
     });
     thread->start();
-}
-
-void OcrTaskWidget::startPaddleOcr()
-{
-    setStatus(tr("Preparing PaddleOCR..."));
-
-    QTemporaryFile imageFile(QDir::tempPath() +
-                             QStringLiteral("/flameshot-paddleocr-XXXXXX.png"));
-    imageFile.setAutoRemove(false);
-    if (!imageFile.open() || !m_capture.toImage()
-                                .convertToFormat(QImage::Format_RGB32)
-                                .save(&imageFile, "PNG")) {
-        QFile::remove(imageFile.fileName());
-        failTask(tr("Unable to create a temporary image for OCR."));
-        return;
-    }
-    imageFile.close();
-    m_imagePath = QFileInfo(imageFile.fileName()).absoluteFilePath();
-    emit preparedImageReady(m_imagePath);
-
-    QTemporaryFile formulaImageFile(
-      QDir::tempPath() +
-      QStringLiteral("/flameshot-paddleocr-formula-XXXXXX.png"));
-    formulaImageFile.setAutoRemove(false);
-    if (!formulaImageFile.open() ||
-        !preparedLatexOcrImage(m_capture).save(&formulaImageFile, "PNG")) {
-        QFile::remove(formulaImageFile.fileName());
-        failTask(tr("Unable to create a temporary formula image for OCR."));
-        return;
-    }
-    formulaImageFile.close();
-    m_formulaImagePath =
-      QFileInfo(formulaImageFile.fileName()).absoluteFilePath();
-
-    AbstractLogger::info(AbstractLogger::Stderr)
-      << tr("PaddleOCR queued in background: image=%1, formulaImage=%2, "
-            "timeout=%3 ms.")
-           .arg(m_imagePath,
-                m_formulaImagePath,
-                QString::number(paddleOcrTimeoutMs()));
-
-    setStatus(tr("Running PaddleOCR..."));
-    m_paddleOcrRequestTimedOut = false;
-    m_paddleOcrRequestId = paddleOcrService()->recognize(
-      m_imagePath,
-      m_formulaImagePath,
-      [guard = QPointer<OcrTaskWidget>(this)](bool ok,
-                                              const QString& text,
-                                              const QString& latex,
-                                              const QString& fallbackText,
-                                              const QString& fallbackLatex,
-                                              const QString& resultInfo,
-                                              const QString& fallbackInfo,
-                                              const QString& extraText,
-                                              const QString& extraLatex,
-                                              const QString& extraInfo,
-                                              const QString& error) {
-          if (guard) {
-              guard->handlePaddleOcrServiceFinished(ok,
-                                                    text,
-                                                    latex,
-                                                    fallbackText,
-                                                    fallbackLatex,
-                                                    resultInfo,
-                                                    fallbackInfo,
-                                                    extraText,
-                                                    extraLatex,
-                                                    extraInfo,
-                                                    error);
-          }
-      });
-
-    const int requestId = m_paddleOcrRequestId;
-    QTimer::singleShot(paddleOcrTimeoutMs(), this, [this, requestId]() {
-        if (m_paddleOcrRequestId != requestId) {
-            return;
-        }
-        m_paddleOcrRequestTimedOut = true;
-        m_lastError = tr("PaddleOCR backend timed out.");
-        AbstractLogger::warning(AbstractLogger::Stderr) << m_lastError;
-        paddleOcrService()->cancel(requestId);
-    });
 }
 
 void OcrTaskWidget::startMarkerOcr()
@@ -4691,51 +3618,6 @@ void OcrTaskWidget::handleTextellerServiceFinished(const QString& backendName,
     }
 }
 
-void OcrTaskWidget::handlePaddleOcrServiceFinished(bool ok,
-                                                   const QString& text,
-                                                   const QString& latex,
-                                                   const QString& fallbackText,
-                                                   const QString& fallbackLatex,
-                                                   const QString& resultInfo,
-                                                   const QString& fallbackInfo,
-                                                   const QString& extraText,
-                                                   const QString& extraLatex,
-                                                   const QString& extraInfo,
-                                                   const QString& error)
-{
-    if (m_paddleOcrRequestId == 0) {
-        return;
-    }
-
-    const bool timedOut = m_paddleOcrRequestTimedOut;
-    m_paddleOcrRequestId = 0;
-    m_paddleOcrRequestTimedOut = false;
-
-    if (m_cancelled) {
-        emit cancelled();
-        close();
-        return;
-    }
-
-    if (!ok || timedOut) {
-        m_lastError = timedOut ? tr("PaddleOCR backend timed out.")
-                               : tr("PaddleOCR backend failed: %1").arg(error);
-        AbstractLogger::warning(AbstractLogger::Stderr) << m_lastError;
-        failTask(m_lastError);
-        return;
-    }
-
-    completePaddleOcr(text.trimmed(),
-                      latex.trimmed(),
-                      fallbackText.trimmed(),
-                      fallbackLatex.trimmed(),
-                      resultInfo.trimmed(),
-                      fallbackInfo.trimmed(),
-                      extraText.trimmed(),
-                      extraLatex.trimmed(),
-                      extraInfo.trimmed());
-}
-
 void OcrTaskWidget::handleMarkerOcrServiceFinished(bool ok,
                                                    const QString& text,
                                                    const QString& latex,
@@ -4770,15 +3652,15 @@ void OcrTaskWidget::handleMarkerOcrServiceFinished(bool ok,
         return;
     }
 
-    completePaddleOcr(text.trimmed(),
-                      latex.trimmed(),
-                      fallbackText.trimmed(),
-                      fallbackLatex.trimmed(),
-                      resultInfo.trimmed(),
-                      fallbackInfo.trimmed(),
-                      extraText.trimmed(),
-                      extraLatex.trimmed(),
-                      extraInfo.trimmed());
+    completeStructuredOcr(text.trimmed(),
+                          latex.trimmed(),
+                          fallbackText.trimmed(),
+                          fallbackLatex.trimmed(),
+                          resultInfo.trimmed(),
+                          fallbackInfo.trimmed(),
+                          extraText.trimmed(),
+                          extraLatex.trimmed(),
+                          extraInfo.trimmed());
 }
 
 void OcrTaskWidget::handleTextOcrProbeFinished(const QString& output,
@@ -4993,10 +3875,6 @@ void OcrTaskWidget::cancelTask()
         m_barcodeThread->requestInterruption();
         return;
     }
-    if (m_paddleOcrRequestId != 0) {
-        paddleOcrService()->cancel(m_paddleOcrRequestId);
-        return;
-    }
     if (m_markerOcrRequestId != 0) {
         markerOcrService()->cancel(m_markerOcrRequestId);
         return;
@@ -5058,15 +3936,15 @@ void OcrTaskWidget::completeLatexOcr(const QString& latex)
     close();
 }
 
-void OcrTaskWidget::completePaddleOcr(const QString& text,
-                                      const QString& latex,
-                                      const QString& fallbackText,
-                                      const QString& fallbackLatex,
-                                      const QString& resultInfo,
-                                      const QString& fallbackInfo,
-                                      const QString& extraText,
-                                      const QString& extraLatex,
-                                      const QString& extraInfo)
+void OcrTaskWidget::completeStructuredOcr(const QString& text,
+                                          const QString& latex,
+                                          const QString& fallbackText,
+                                          const QString& fallbackLatex,
+                                          const QString& resultInfo,
+                                          const QString& fallbackInfo,
+                                          const QString& extraText,
+                                          const QString& extraLatex,
+                                          const QString& extraInfo)
 {
     cleanupImage();
     if (text.isEmpty() && latex.isEmpty() && fallbackText.isEmpty() &&
@@ -5124,12 +4002,6 @@ void OcrTaskWidget::cleanupProcess()
         thread->wait();
         thread->disconnect(this);
         thread->deleteLater();
-    }
-
-    if (m_paddleOcrRequestId != 0) {
-        const int requestId = m_paddleOcrRequestId;
-        m_paddleOcrRequestId = 0;
-        paddleOcrService()->cancel(requestId);
     }
 
     if (m_markerOcrRequestId != 0) {
