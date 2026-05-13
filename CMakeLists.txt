@@ -150,7 +150,7 @@ if(WIN32 OR APPLE)
   FetchContent_MakeAvailable(QHotKey)
 endif()
 
-find_package(ZXing CONFIG QUIET)
+find_package(ZXing 3.0 CONFIG QUIET)
 if(TARGET ZXing::ZXing)
   set(FLAMESHOT_ZXING_TARGET ZXing::ZXing)
 elseif(TARGET ZXing)
@@ -160,11 +160,12 @@ elseif(USE_BUNDLED_ZXING)
   set(ZXING_BLACKBOX_TESTS OFF CACHE BOOL "Disable zxing-cpp blackbox tests" FORCE)
   set(ZXING_UNIT_TESTS OFF CACHE BOOL "Disable zxing-cpp unit tests" FORCE)
   set(ZXING_READERS ON CACHE BOOL "Enable zxing-cpp readers" FORCE)
-  set(ZXING_WRITERS OFF CACHE BOOL "Disable zxing-cpp writers" FORCE)
+  set(ZXING_WRITERS "OFF" CACHE STRING "Disable zxing-cpp writers" FORCE)
+  set(ZXING_EXPERIMENTAL_API ON CACHE BOOL "Enable zxing-cpp experimental reader options" FORCE)
   FetchContent_Declare(
     zxingCpp
     GIT_REPOSITORY https://github.com/zxing-cpp/zxing-cpp.git
-    GIT_TAG v2.3.0
+    GIT_TAG v3.0.2
     GIT_SHALLOW TRUE
   )
   FetchContent_MakeAvailable(zxingCpp)

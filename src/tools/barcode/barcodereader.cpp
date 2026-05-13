@@ -222,7 +222,8 @@ QString cleanedBarcodeText(QString text)
 }
 
 #if defined(FLAMESHOT_HAVE_ZXING)
-QList<BarcodeReader::Result> scanCandidate(const QImage& image)
+QList<BarcodeReader::Result> scanCandidate(const QImage& image,
+                                           int maxNumberOfSymbols)
 {
     QList<BarcodeReader::Result> results;
     const QImage rgb = image.convertToFormat(QImage::Format_RGB888);
@@ -230,39 +231,47 @@ QList<BarcodeReader::Result> scanCandidate(const QImage& image)
         return results;
     }
 
-    ZXing::ReaderOptions options;
-    options.setFormats(ZXing::BarcodeFormat::Any)
-      .setTryHarder(true)
-      .setTryRotate(true)
-      .setTryInvert(true)
-      .setTryDownscale(true)
-      .setMaxNumberOfSymbols(64)
-      .setTextMode(ZXing::TextMode::HRI);
-
     const ZXing::ImageView view(rgb.constBits(),
                                 rgb.width(),
                                 rgb.height(),
                                 ZXing::ImageFormat::RGB,
                                 rgb.bytesPerLine());
-    for (const auto& barcode : ZXing::ReadBarcodes(view, options)) {
-        if (!barcode.isValid()) {
-            continue;
-        }
-        const std::string text = barcode.text();
-        if (text.empty()) {
-            continue;
-        }
+    const ZXing::Binarizer binarizers[] = { ZXing::Binarizer::LocalAverage,
+                                            ZXing::Binarizer::GlobalHistogram };
+    for (ZXing::Binarizer binarizer : binarizers) {
+        ZXing::ReaderOptions options;
+        options.setFormats(ZXing::BarcodeFormat::All)
+          .setTryHarder(true)
+          .setTryRotate(true)
+          .setTryInvert(true)
+          .setTryDownscale(true)
+          .setBinarizer(binarizer)
+          .setMaxNumberOfSymbols(maxNumberOfSymbols)
+          .setTextMode(ZXing::TextMode::Plain);
+#if defined(ZXING_EXPERIMENTAL_API)
+        options.setTryDenoise(true);
+#endif
 
-        BarcodeReader::Result result;
-        const std::string format = ZXing::ToString(barcode.format());
-        result.format = QString::fromUtf8(
-          format.data(), static_cast<qsizetype>(format.size()));
-        result.text =
-          QString::fromUtf8(text.data(), static_cast<qsizetype>(text.size()));
-        result.orientation = barcode.orientation();
-        result.inverted = barcode.isInverted();
-        result.mirrored = barcode.isMirrored();
-        results.append(result);
+        for (const auto& barcode : ZXing::ReadBarcodes(view, options)) {
+            if (!barcode.isValid()) {
+                continue;
+            }
+            const std::string text = barcode.text();
+            if (text.empty()) {
+                continue;
+            }
+
+            BarcodeReader::Result result;
+            const std::string format = ZXing::ToString(barcode.format());
+            result.format = QString::fromUtf8(
+              format.data(), static_cast<qsizetype>(format.size()));
+            result.text = QString::fromUtf8(
+              text.data(), static_cast<qsizetype>(text.size()));
+            result.orientation = barcode.orientation();
+            result.inverted = barcode.isInverted();
+            result.mirrored = barcode.isMirrored();
+            results.append(result);
+        }
     }
     return results;
 }
@@ -286,14 +295,19 @@ ScanResult scanImage(const QImage& image)
     return scan;
 #else
     QSet<QString> seen;
-    for (const QImage& candidate : scanCandidates(image)) {
-        for (const Result& result : scanCandidate(candidate)) {
-            const QString key = result.format + QChar(0x1f) + result.text;
-            if (seen.contains(key)) {
-                continue;
+    const int symbolCounts[] = { 1, 64 };
+    for (int maxNumberOfSymbols : symbolCounts) {
+        for (const QImage& candidate : scanCandidates(image)) {
+            for (const Result& result :
+                 scanCandidate(candidate, maxNumberOfSymbols)) {
+                const QString key =
+                  result.format + QChar(0x1f) + result.text;
+                if (seen.contains(key)) {
+                    continue;
+                }
+                seen.insert(key);
+                scan.results.append(result);
             }
-            seen.insert(key);
-            scan.results.append(result);
         }
     }
 
