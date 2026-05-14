@@ -20,6 +20,7 @@ SelectionWidget::SelectionWidget(QColor c, QWidget* parent)
   , m_color(std::move(c))
   , m_activeSide(NO_SIDE)
   , m_ignoreMouse(false)
+  , m_lockedVisualMode(false)
 {
     // prevents this widget from consuming CaptureToolButton mouse events
     setAttribute(Qt::WA_TransparentForMouseEvents);
@@ -109,6 +110,12 @@ void SelectionWidget::setIgnoreMouse(bool ignore)
 {
     m_ignoreMouse = ignore;
     updateCursor();
+}
+
+void SelectionWidget::setLockedVisualMode(bool locked)
+{
+    m_lockedVisualMode = locked;
+    update();
 }
 
 /**
@@ -383,6 +390,22 @@ void SelectionWidget::paintEvent(QPaintEvent*)
     if (!p.isActive()) {
         return;
     }
+    if (m_lockedVisualMode) {
+        QRect outline = rect() + QMargins(0, 0, -1, -1);
+        p.setRenderHint(QPainter::Antialiasing);
+        for (int width : { 9, 5 }) {
+            QColor glow = m_color;
+            glow.setAlpha(width == 9 ? 38 : 72);
+            p.setPen(QPen(glow, width));
+            p.drawRoundedRect(outline, 2, 2);
+        }
+        QColor line = m_color;
+        line.setAlpha(190);
+        p.setPen(QPen(line, 1));
+        p.drawRoundedRect(outline, 2, 2);
+        return;
+    }
+
     p.setPen(m_color);
     p.drawRect(rect() + QMargins(0, 0, -1, -1));
     p.setRenderHint(QPainter::Antialiasing);

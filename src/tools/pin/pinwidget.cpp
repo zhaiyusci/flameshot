@@ -27,6 +27,24 @@ constexpr int MARGIN = 7;
 constexpr int BLUR_RADIUS = 2 * MARGIN;
 constexpr qreal STEP = 0.03;
 constexpr qreal MIN_SIZE = 100.0;
+
+void fillEditorBackground(QPixmap& pixmap)
+{
+    QImage background(pixmap.size(), QImage::Format_RGB32);
+    const QColor base(0x9e, 0x9e, 0x9e);
+    const QColor stripe(0x88, 0x88, 0x88);
+    const int spacing = 5;
+
+    for (int y = 0; y < background.height(); ++y) {
+        QRgb* line = reinterpret_cast<QRgb*>(background.scanLine(y));
+        for (int x = 0; x < background.width(); ++x) {
+            int phase = (x + y) % spacing;
+            line[x] = phase == 0 ? stripe.rgb() : base.rgb();
+        }
+    }
+
+    pixmap = QPixmap::fromImage(background);
+}
 }
 
 PinWidget::PinWidget(const QPixmap& pixmap,
@@ -274,7 +292,7 @@ void PinWidget::openTools()
     }
 
     QPixmap editorPixmapOnScreen(screenGeometry.size());
-    editorPixmapOnScreen.fill(QColor(32, 32, 32));
+    fillEditorBackground(editorPixmapOnScreen);
     QPainter painter(&editorPixmapOnScreen);
     painter.drawPixmap(imageLocalRect, editorPixmap);
     painter.end();

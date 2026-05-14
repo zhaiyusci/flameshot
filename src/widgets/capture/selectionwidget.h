@@ -32,6 +32,7 @@ public:
 
     void setIgnoreMouse(bool ignore);
     void setIdleCentralCursor(const QCursor& cursor);
+    void setLockedVisualMode(bool locked);
 
     void setGeometryAnimated(const QRect& r);
     void setGeometry(const QRect& r);
@@ -93,6 +94,7 @@ private:
     QCursor m_idleCentralCursor;
     bool m_ignoreMouse;
     bool m_mouseStartMove;
+    bool m_lockedVisualMode;
 
     // naming convention for handles
     // T top, B bottom, R Right, L left

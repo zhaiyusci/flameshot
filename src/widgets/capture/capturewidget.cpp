@@ -343,7 +343,7 @@ CaptureWidget::CaptureWidget(const CaptureRequest& req,
       m_context.fullscreen && !areas.isEmpty() ? areas.first() : rect();
     OverlayMessage::init(this, overlayArea);
 
-    if (m_config.showHelp()) {
+    if (m_config.showHelp() && !m_localImageMode) {
         initHelpMessage();
         OverlayMessage::push(m_helpMessage);
     }
@@ -1416,6 +1416,7 @@ void CaptureWidget::initSelection()
 {
     // Be mindful of the order of statements, so that slots are called properly
     m_selection = new SelectionWidget(m_uiColor, this);
+    m_selection->setLockedVisualMode(m_localImageMode);
     QRect initialSelection = m_context.request.initialSelection();
     connect(m_selection, &SelectionWidget::geometryChanged, this, [this]() {
         QRect constrainedToCaptureArea =
@@ -1748,43 +1749,49 @@ void CaptureWidget::initShortcuts()
                 this,
                 SLOT(startColorGrab()));
 
-    newShortcut(QKeySequence(ConfigHandler().shortcut("TYPE_RESIZE_LEFT")),
-                m_selection,
-                SLOT(resizeLeft()));
-    newShortcut(QKeySequence(ConfigHandler().shortcut("TYPE_RESIZE_RIGHT")),
-                m_selection,
-                SLOT(resizeRight()));
-    newShortcut(QKeySequence(ConfigHandler().shortcut("TYPE_RESIZE_UP")),
-                m_selection,
-                SLOT(resizeUp()));
-    newShortcut(QKeySequence(ConfigHandler().shortcut("TYPE_RESIZE_DOWN")),
-                m_selection,
-                SLOT(resizeDown()));
-    newShortcut(QKeySequence(ConfigHandler().shortcut("TYPE_SYM_RESIZE_LEFT")),
-                m_selection,
-                SLOT(symResizeLeft()));
-    newShortcut(QKeySequence(ConfigHandler().shortcut("TYPE_SYM_RESIZE_RIGHT")),
-                m_selection,
-                SLOT(symResizeRight()));
-    newShortcut(QKeySequence(ConfigHandler().shortcut("TYPE_SYM_RESIZE_UP")),
-                m_selection,
-                SLOT(symResizeUp()));
-    newShortcut(QKeySequence(ConfigHandler().shortcut("TYPE_SYM_RESIZE_DOWN")),
-                m_selection,
-                SLOT(symResizeDown()));
+    if (!m_localImageMode) {
+        newShortcut(QKeySequence(ConfigHandler().shortcut("TYPE_RESIZE_LEFT")),
+                    m_selection,
+                    SLOT(resizeLeft()));
+        newShortcut(QKeySequence(ConfigHandler().shortcut("TYPE_RESIZE_RIGHT")),
+                    m_selection,
+                    SLOT(resizeRight()));
+        newShortcut(QKeySequence(ConfigHandler().shortcut("TYPE_RESIZE_UP")),
+                    m_selection,
+                    SLOT(resizeUp()));
+        newShortcut(QKeySequence(ConfigHandler().shortcut("TYPE_RESIZE_DOWN")),
+                    m_selection,
+                    SLOT(resizeDown()));
+        newShortcut(QKeySequence(
+                      ConfigHandler().shortcut("TYPE_SYM_RESIZE_LEFT")),
+                    m_selection,
+                    SLOT(symResizeLeft()));
+        newShortcut(QKeySequence(
+                      ConfigHandler().shortcut("TYPE_SYM_RESIZE_RIGHT")),
+                    m_selection,
+                    SLOT(symResizeRight()));
+        newShortcut(QKeySequence(
+                      ConfigHandler().shortcut("TYPE_SYM_RESIZE_UP")),
+                    m_selection,
+                    SLOT(symResizeUp()));
+        newShortcut(QKeySequence(
+                      ConfigHandler().shortcut("TYPE_SYM_RESIZE_DOWN")),
+                    m_selection,
+                    SLOT(symResizeDown()));
 
-    newShortcut(QKeySequence(ConfigHandler().shortcut("TYPE_MOVE_LEFT")),
-                m_selection,
-                SLOT(moveLeft()));
-    newShortcut(QKeySequence(ConfigHandler().shortcut("TYPE_MOVE_RIGHT")),
-                m_selection,
-                SLOT(moveRight()));
-    newShortcut(QKeySequence(ConfigHandler().shortcut("TYPE_MOVE_UP")),
-                m_selection,
-                SLOT(moveUp()));
-    newShortcut(QKeySequence(ConfigHandler().shortcut("TYPE_MOVE_DOWN")),
-                m_selection,
-                SLOT(moveDown()));
+        newShortcut(QKeySequence(ConfigHandler().shortcut("TYPE_MOVE_LEFT")),
+                    m_selection,
+                    SLOT(moveLeft()));
+        newShortcut(QKeySequence(ConfigHandler().shortcut("TYPE_MOVE_RIGHT")),
+                    m_selection,
+                    SLOT(moveRight()));
+        newShortcut(QKeySequence(ConfigHandler().shortcut("TYPE_MOVE_UP")),
+                    m_selection,
+                    SLOT(moveUp()));
+        newShortcut(QKeySequence(ConfigHandler().shortcut("TYPE_MOVE_DOWN")),
+                    m_selection,
+                    SLOT(moveDown()));
+    }
 
     newShortcut(QKeySequence(ConfigHandler().shortcut("TYPE_CANCEL")),
                 this,
@@ -1800,9 +1807,11 @@ void CaptureWidget::initShortcuts()
       this,
       SLOT(commitCurrentTool()));
 
-    newShortcut(QKeySequence(ConfigHandler().shortcut("TYPE_SELECT_ALL")),
-                this,
-                SLOT(selectAll()));
+    if (!m_localImageMode) {
+        newShortcut(QKeySequence(ConfigHandler().shortcut("TYPE_SELECT_ALL")),
+                    this,
+                    SLOT(selectAll()));
+    }
 
     newShortcut(Qt::Key_Escape, this, SLOT(deleteToolWidgetOrClose()));
 }
@@ -1836,7 +1845,8 @@ void CaptureWidget::updateCursor()
     } else if (m_activeButton != nullptr &&
                activeButtonToolType() != CaptureTool::TYPE_MOVESELECTION) {
         setCursor(Qt::CrossCursor);
-    } else if (m_selection->getMouseSide(mapFromGlobal(QCursor::pos())) !=
+    } else if (!m_localImageMode &&
+               m_selection->getMouseSide(mapFromGlobal(QCursor::pos())) !=
                SelectionWidget::NO_SIDE) {
         setCursor(m_selection->cursor());
     } else if (activeButtonToolType() == CaptureTool::TYPE_MOVESELECTION) {
@@ -1848,6 +1858,12 @@ void CaptureWidget::updateCursor()
 
 void CaptureWidget::updateSelectionState()
 {
+    if (m_localImageMode) {
+        m_selection->setIdleCentralCursor(Qt::ArrowCursor);
+        m_selection->setIgnoreMouse(true);
+        return;
+    }
+
     auto toolType = activeButtonToolType();
     if (toolType == CaptureTool::TYPE_MOVESELECTION) {
         m_selection->setIdleCentralCursor(Qt::OpenHandCursor);
@@ -2160,6 +2176,10 @@ void CaptureWidget::drawErrorMessage(const QString& msg, QPainter* painter)
 
 void CaptureWidget::drawInactiveRegion(QPainter* painter)
 {
+    if (m_localImageMode) {
+        return;
+    }
+
     QColor overlayColor(0, 0, 0, m_opacity);
     painter->setBrush(overlayColor);
     QRect r;
