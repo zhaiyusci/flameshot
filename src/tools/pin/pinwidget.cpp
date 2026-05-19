@@ -5,6 +5,7 @@
 #include "core/capturerequest.h"
 #include "core/qguiappcurrentscreen.h"
 #include "utils/confighandler.h"
+#include "utils/desktopinfo.h"
 #include "utils/globalvalues.h"
 #include "utils/screenshotsaver.h"
 #include "widgets/capture/capturewidget.h"
@@ -57,8 +58,18 @@ PinWidget::PinWidget(const QPixmap& pixmap,
   , m_shadowEffect(new QGraphicsDropShadowEffect(this))
 {
     setWindowIcon(QIcon(GlobalValues::iconPath()));
-    setWindowFlags(Qt::WindowStaysOnTopHint | Qt::FramelessWindowHint |
-                   Qt::Dialog);
+    DesktopInfo desktopInfo;
+    Qt::WindowFlags windowFlags =
+      Qt::WindowStaysOnTopHint | Qt::FramelessWindowHint | Qt::Dialog;
+    if (!desktopInfo.waylandDetected() &&
+        desktopInfo.windowManager() == DesktopInfo::KDE) {
+        // KWin keeps managed dialog windows inside the available work area.
+        // That moves pins away from screenshots that intentionally include the
+        // Plasma panel, so bypass the window manager only for KDE/X11.
+        windowFlags |= Qt::BypassWindowManagerHint;
+        m_forceManualMove = true;
+    }
+    setWindowFlags(windowFlags);
     setFocusPolicy(Qt::StrongFocus);
     setAttribute(Qt::WA_TranslucentBackground);
     setAttribute(Qt::WA_DeleteOnClose);
@@ -193,13 +204,40 @@ void PinWidget::mouseDoubleClickEvent(QMouseEvent*)
 
 void PinWidget::mousePressEvent(QMouseEvent* e)
 {
-    if (QWindow* window = windowHandle(); window != nullptr) {
-        window->startSystemMove();
+    if (e->button() != Qt::LeftButton) {
         return;
     }
+
+    if (!m_forceManualMove && windowHandle() != nullptr) {
+        QWindow* window = windowHandle();
+        if (window->startSystemMove()) {
+            return;
+        }
+    }
+
+    m_manualMoveActive = true;
+    m_manualMoveOffset =
+      e->globalPosition().toPoint() - frameGeometry().topLeft();
+    e->accept();
 }
 
-void PinWidget::mouseMoveEvent(QMouseEvent* e) {}
+void PinWidget::mouseMoveEvent(QMouseEvent* e)
+{
+    if (!m_manualMoveActive || !(e->buttons() & Qt::LeftButton)) {
+        return;
+    }
+
+    move(e->globalPosition().toPoint() - m_manualMoveOffset);
+    e->accept();
+}
+
+void PinWidget::mouseReleaseEvent(QMouseEvent* e)
+{
+    if (e->button() == Qt::LeftButton) {
+        m_manualMoveActive = false;
+        e->accept();
+    }
+}
 
 void PinWidget::keyPressEvent(QKeyEvent* event)
 {

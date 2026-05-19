@@ -220,16 +220,22 @@ CaptureWidget::CaptureWidget(const CaptureRequest& req,
 #else
 // Call cmake with -DFLAMESHOT_DEBUG_CAPTURE=ON to enable easier debugging
 #if !defined(FLAMESHOT_DEBUG_CAPTURE)
-        if (DesktopInfo().waylandDetected()) {
-            setWindowFlags(Qt::BypassWindowManagerHint |
-                           Qt::WindowStaysOnTopHint | Qt::FramelessWindowHint |
-                           Qt::Tool);
-        } else {
-            // Note: Qt::BypassWindowManagerHint is removed to fix x11 gnome
-            // crash. It's needed on Cosmic
-            setWindowFlags(Qt::WindowStaysOnTopHint | Qt::FramelessWindowHint |
-                           Qt::Tool);
+        DesktopInfo desktopInfo;
+        const DesktopInfo::WM wm = desktopInfo.windowManager();
+        const bool useBypassWindowManager =
+          desktopInfo.waylandDetected() || wm == DesktopInfo::KDE ||
+          wm == DesktopInfo::COSMIC;
+
+        Qt::WindowFlags windowFlags =
+          Qt::WindowStaysOnTopHint | Qt::FramelessWindowHint | Qt::Tool;
+        if (useBypassWindowManager) {
+            // KDE Plasma panels are dock/above windows on X11. Bypassing the
+            // window manager lets the capture layer cover the panel and receive
+            // mouse events there, while still avoiding the old GNOME X11 crash
+            // path by not enabling this flag for every X11 desktop.
+            windowFlags |= Qt::BypassWindowManagerHint;
         }
+        setWindowFlags(windowFlags);
 #endif
 
         // Always display on the selected screen (not spanning entire desktop)
