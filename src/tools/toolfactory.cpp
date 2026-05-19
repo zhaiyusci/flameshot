@@ -21,6 +21,7 @@
 #include "tools/pencil/penciltool.h"
 #include "tools/pin/pintool.h"
 #include "tools/pixelate/pixelatetool.h"
+#include "tools/pointer/pointertool.h"
 #include "tools/rectangle/rectangletool.h"
 #include "tools/redo/redotool.h"
 #include "tools/save/savetool.h"
@@ -42,6 +43,7 @@ CaptureTool* ToolFactory::CreateTool(CaptureTool::Type t, QObject* parent)
 
     switch (t) {
         if_TYPE_return_TOOL(TYPE_PENCIL, PencilTool);
+        if_TYPE_return_TOOL(TYPE_POINTER, PointerTool);
         if_TYPE_return_TOOL(TYPE_DRAWER, LineTool);
         if_TYPE_return_TOOL(TYPE_ARROW, ArrowTool);
         if_TYPE_return_TOOL(TYPE_SELECTION, SelectionTool);

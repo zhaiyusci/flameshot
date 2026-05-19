@@ -48,6 +48,7 @@ CaptureTool* AcceptTool::copy(QObject* parent)
 
 void AcceptTool::pressed(CaptureContext& context)
 {
+    emit requestAction(REQ_CLEAR_SELECTION);
     emit requestAction(REQ_CAPTURE_DONE_OK);
     if (context.request.tasks() & CaptureRequest::PIN) {
         QRect geometry = context.selection;

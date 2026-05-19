@@ -54,6 +54,7 @@ public:
         TYPE_OCR = 25,
         TYPE_LATEX_OCR = 26,
         TYPE_BARCODE = 27,
+        TYPE_POINTER = 28,
     };
     Q_ENUM(Type);
 

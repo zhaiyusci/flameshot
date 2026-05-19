@@ -92,6 +92,26 @@ QRect AbstractTwoPointTool::boundingRect() const
     return rect.normalized();
 }
 
+void AbstractTwoPointTool::drawObjectSelection(QPainter& painter)
+{
+    drawObjectSelectionRect(painter, boundingRect());
+
+    const int handleSize = 9;
+    const int halfHandle = handleSize / 2;
+    const auto oldPen = painter.pen();
+    const auto oldBrush = painter.brush();
+    painter.setPen(QPen(Qt::black, 1));
+    painter.setBrush(Qt::white);
+    for (const auto& point : { m_points.first, m_points.second }) {
+        painter.drawRect(QRect(point.x() - halfHandle,
+                               point.y() - halfHandle,
+                               handleSize,
+                               handleSize));
+    }
+    painter.setBrush(oldBrush);
+    painter.setPen(oldPen);
+}
+
 void AbstractTwoPointTool::drawEnd(const QPoint& p)
 {
     Q_UNUSED(p)
@@ -100,6 +120,16 @@ void AbstractTwoPointTool::drawEnd(const QPoint& p)
 void AbstractTwoPointTool::drawMove(const QPoint& p)
 {
     m_points.second = p;
+}
+
+void AbstractTwoPointTool::setFirstPoint(const QPoint& point)
+{
+    m_points.first = point;
+}
+
+void AbstractTwoPointTool::setSecondPoint(const QPoint& point)
+{
+    m_points.second = point;
 }
 
 void AbstractTwoPointTool::drawMoveWithAdjustment(const QPoint& p)

@@ -14,6 +14,7 @@
 #include "config/generalconf.h"
 #include "core/flameshot.h"
 #include "core/qguiappcurrentscreen.h"
+#include "tools/abstracttwopointtool.h"
 #include "tools/copy/copytool.h"
 #include "utils/abstractlogger.h"
 #include "utils/screengrabber.h"
@@ -92,6 +93,8 @@ CaptureWidget::CaptureWidget(const CaptureRequest& req,
   , m_activeButton(nullptr)
   , m_activeTool(nullptr)
   , m_activeToolIsMoved(false)
+  , m_activeToolEditHandle(ToolObjectEditHandle::None)
+  , m_activeToolEditHandleOffsetToMouseOnStart(QPoint())
   , m_toolWidget(nullptr)
   , m_panel(nullptr)
   , m_sidePanel(nullptr)
@@ -882,7 +885,8 @@ void CaptureWidget::showColorPicker(const QPoint& pos)
 bool CaptureWidget::startDrawObjectTool(const QPoint& pos)
 {
     if (activeButtonToolType() != CaptureTool::NONE &&
-        activeButtonToolType() != CaptureTool::TYPE_MOVESELECTION) {
+        activeButtonToolType() != CaptureTool::TYPE_MOVESELECTION &&
+        !objectPointerMode()) {
         if (commitCurrentTool()) {
             return false;
         }
@@ -921,12 +925,13 @@ void CaptureWidget::pushObjectsStateToUndoStack()
     m_captureToolObjectsBackup.clear();
 }
 
-int CaptureWidget::selectToolItemAtPos(const QPoint& pos)
+int CaptureWidget::selectToolItemAtPos(const QPoint& pos,
+                                       bool allowActiveButtonSelection)
 {
     // Try to select existing tool, "-1" - no active tool
     int activeLayerIndex = -1;
     auto selectionMouseSide = m_selection->getMouseSide(pos);
-    if (m_activeButton.isNull() &&
+    if ((m_activeButton.isNull() || allowActiveButtonSelection) &&
         m_captureToolObjects.captureToolObjects().size() > 0 &&
         (selectionMouseSide == SelectionWidget::NO_SIDE ||
          selectionMouseSide == SelectionWidget::CENTER)) {
@@ -940,6 +945,8 @@ int CaptureWidget::selectToolItemAtPos(const QPoint& pos)
             if (oldToolSize != m_context.toolSize) {
                 emit toolSizeChanged(m_context.toolSize);
             }
+        } else {
+            activeLayerIndex = m_panel->activeLayerIndex();
         }
     }
     return activeLayerIndex;
@@ -952,6 +959,7 @@ void CaptureWidget::mousePressEvent(QMouseEvent* e)
     m_startMovePos = QPoint();
     m_mousePressedPos = e->pos();
     m_activeToolOffsetToMouseOnStart = QPoint();
+    m_activeToolEditHandleOffsetToMouseOnStart = QPoint();
     if (m_colorPicker->isVisible()) {
         updateCursor();
         return;
@@ -968,6 +976,27 @@ void CaptureWidget::mousePressEvent(QMouseEvent* e)
         return;
     } else if (e->button() == Qt::LeftButton) {
         m_mouseIsClicked = true;
+
+        if (objectPointerMode()) {
+            m_activeToolEditHandle = toolObjectEditHandleAt(m_mousePressedPos);
+            if (m_activeToolEditHandle != ToolObjectEditHandle::None) {
+                m_startMove = true;
+                m_activeToolEditHandleOffsetToMouseOnStart =
+                  m_mousePressedPos -
+                  toolObjectEditHandlePosition(m_activeToolEditHandle);
+                updateSelectionState();
+                updateCursor();
+                return;
+            }
+
+            if (selectToolItemAtPos(m_mousePressedPos, true) < 0) {
+                m_panel->setActiveLayer(-1);
+                drawToolsData(false);
+            }
+            updateSelectionState();
+            updateCursor();
+            return;
+        }
 
         // Click using a tool excluding tool MOVE
         if (startDrawObjectTool(m_mousePressedPos)) {
@@ -1042,7 +1071,8 @@ void CaptureWidget::mouseMoveEvent(QMouseEvent* e)
     }
 
     // The rest assumes that left mouse button is clicked
-    if (!m_activeButton && m_panel->activeLayerIndex() >= 0) {
+    if ((!m_activeButton || objectPointerCanEdit()) &&
+        m_panel->activeLayerIndex() >= 0) {
         // Move existing object
         if (!m_startMove) {
             // Check for the minimal offset to start moving an object
@@ -1055,6 +1085,11 @@ void CaptureWidget::mouseMoveEvent(QMouseEvent* e)
             }
         }
         if (m_startMove) {
+            if (m_activeToolEditHandle != ToolObjectEditHandle::None &&
+                updateToolObjectEditHandle(e->pos())) {
+                updateCursor();
+                return;
+            }
             QPointer<CaptureTool> activeTool =
               m_captureToolObjects.at(m_panel->activeLayerIndex());
             if (m_activeToolOffsetToMouseOnStart.isNull()) {
@@ -1130,6 +1165,7 @@ void CaptureWidget::mouseReleaseEvent(QMouseEvent* e)
     }
     m_mouseIsClicked = false;
     m_activeToolIsMoved = false;
+    m_activeToolEditHandle = ToolObjectEditHandle::None;
 
     updateSelectionState();
     updateCursor();
@@ -1842,6 +1878,15 @@ void CaptureWidget::updateCursor()
 {
     if (m_colorPicker && m_colorPicker->isVisible()) {
         setCursor(Qt::ArrowCursor);
+    } else if (objectPointerMode()) {
+        if (toolObjectEditHandleAt(mapFromGlobal(QCursor::pos())) !=
+            ToolObjectEditHandle::None) {
+            setCursor(Qt::SizeAllCursor);
+        } else if (m_panel->activeLayerIndex() >= 0) {
+            setCursor(Qt::OpenHandCursor);
+        } else {
+            setCursor(Qt::ArrowCursor);
+        }
     } else if (m_activeButton != nullptr &&
                activeButtonToolType() != CaptureTool::TYPE_MOVESELECTION) {
         setCursor(Qt::CrossCursor);
@@ -1865,7 +1910,10 @@ void CaptureWidget::updateSelectionState()
     }
 
     auto toolType = activeButtonToolType();
-    if (toolType == CaptureTool::TYPE_MOVESELECTION) {
+    if (toolType == CaptureTool::TYPE_POINTER) {
+        m_selection->setIdleCentralCursor(Qt::ArrowCursor);
+        m_selection->setIgnoreMouse(true);
+    } else if (toolType == CaptureTool::TYPE_MOVESELECTION) {
         m_selection->setIdleCentralCursor(Qt::OpenHandCursor);
         m_selection->setIgnoreMouse(false);
     } else {
@@ -1907,6 +1955,90 @@ void CaptureWidget::updateTool(CaptureTool* tool)
 void CaptureWidget::updateLayersPanel()
 {
     m_panel->fillCaptureTools(m_captureToolObjects.captureToolObjects());
+}
+
+bool CaptureWidget::objectPointerMode() const
+{
+    return activeButtonToolType() == CaptureTool::TYPE_POINTER;
+}
+
+bool CaptureWidget::objectPointerCanEdit()
+{
+    return objectPointerMode() && m_panel->activeLayerIndex() >= 0;
+}
+
+ToolObjectEditHandle CaptureWidget::toolObjectEditHandleAt(const QPoint& pos)
+{
+    auto toolItem = activeToolObject();
+    auto* twoPointTool = qobject_cast<AbstractTwoPointTool*>(toolItem);
+    if (!twoPointTool) {
+        return ToolObjectEditHandle::None;
+    }
+
+    const int handleRadius = 16;
+    const int handleRadiusSquared = handleRadius * handleRadius;
+    const auto points = twoPointTool->points();
+    const QPoint firstDelta = pos - points.first;
+    const QPoint secondDelta = pos - points.second;
+    const int firstDistanceSquared =
+      firstDelta.x() * firstDelta.x() + firstDelta.y() * firstDelta.y();
+    const int secondDistanceSquared =
+      secondDelta.x() * secondDelta.x() + secondDelta.y() * secondDelta.y();
+    if (firstDistanceSquared > handleRadiusSquared &&
+        secondDistanceSquared > handleRadiusSquared) {
+        return ToolObjectEditHandle::None;
+    }
+    return firstDistanceSquared <= secondDistanceSquared
+             ? ToolObjectEditHandle::TwoPointFirst
+             : ToolObjectEditHandle::TwoPointSecond;
+}
+
+QPoint CaptureWidget::toolObjectEditHandlePosition(
+  ToolObjectEditHandle handle)
+{
+    auto toolItem = activeToolObject();
+    auto* twoPointTool = qobject_cast<AbstractTwoPointTool*>(toolItem);
+    if (!twoPointTool) {
+        return {};
+    }
+    const auto points = twoPointTool->points();
+    if (handle == ToolObjectEditHandle::TwoPointFirst) {
+        return points.first;
+    }
+    if (handle == ToolObjectEditHandle::TwoPointSecond) {
+        return points.second;
+    }
+    return {};
+}
+
+bool CaptureWidget::updateToolObjectEditHandle(const QPoint& pos)
+{
+    auto toolItem = activeToolObject();
+    auto* twoPointTool = qobject_cast<AbstractTwoPointTool*>(toolItem);
+    if (!twoPointTool) {
+        return false;
+    }
+
+    if (!m_activeToolIsMoved) {
+        m_captureToolObjectsBackup = m_captureToolObjects;
+    }
+    m_activeToolIsMoved = true;
+
+    update(paddedUpdateRect(twoPointTool->boundingRect()));
+    const QPoint targetPos =
+      pos - m_activeToolEditHandleOffsetToMouseOnStart;
+    if (m_activeToolEditHandle == ToolObjectEditHandle::TwoPointFirst) {
+        twoPointTool->setFirstPoint(m_displayGrid ? snapToGrid(targetPos)
+                                                  : targetPos);
+    } else if (m_activeToolEditHandle ==
+               ToolObjectEditHandle::TwoPointSecond) {
+        twoPointTool->setSecondPoint(m_displayGrid ? snapToGrid(targetPos)
+                                                   : targetPos);
+    } else {
+        return false;
+    }
+    drawToolsData();
+    return true;
 }
 
 void CaptureWidget::pushToolToStack()
@@ -1967,7 +2099,8 @@ void CaptureWidget::drawObjectSelection()
         if (m_context.toolSize != toolItem->size()) {
             m_context.toolSize = toolItem->size();
         }
-        if (activeToolObject() && m_activeButton) {
+        if (activeToolObject() && m_activeButton &&
+            activeButtonToolType() != CaptureTool::TYPE_POINTER) {
             uncheckActiveTool();
         }
     }

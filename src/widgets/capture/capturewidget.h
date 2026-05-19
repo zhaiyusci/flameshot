@@ -42,6 +42,13 @@ class UpdateNotificationWidget;
 class UtilityPanel;
 class SidePanelWidget;
 
+enum class ToolObjectEditHandle
+{
+    None,
+    TwoPointFirst,
+    TwoPointSecond,
+};
+
 class CaptureWidget : public QWidget
 {
     Q_OBJECT
@@ -124,7 +131,8 @@ private:
     void pushObjectsStateToUndoStack();
     void releaseActiveTool();
     void uncheckActiveTool();
-    int selectToolItemAtPos(const QPoint& pos);
+    int selectToolItemAtPos(const QPoint& pos,
+                            bool allowActiveButtonSelection = false);
     void showColorPicker(const QPoint& pos);
     bool startDrawObjectTool(const QPoint& pos);
     QPointer<CaptureTool> activeToolObject();
@@ -140,6 +148,11 @@ private:
     void updateSelectionState();
     void updateTool(CaptureTool* tool);
     void updateLayersPanel();
+    bool objectPointerMode() const;
+    bool objectPointerCanEdit();
+    ToolObjectEditHandle toolObjectEditHandleAt(const QPoint& pos);
+    QPoint toolObjectEditHandlePosition(ToolObjectEditHandle handle);
+    bool updateToolObjectEditHandle(const QPoint& pos);
     bool promptQuit();
     void pushToolToStack();
     void makeChild(QWidget* w);
@@ -228,6 +241,8 @@ private:
 
     QPoint m_mousePressedPos;
     QPoint m_activeToolOffsetToMouseOnStart;
+    ToolObjectEditHandle m_activeToolEditHandle;
+    QPoint m_activeToolEditHandleOffsetToMouseOnStart;
 
     // XYWH display position and timer
     bool m_xywhDisplay;
