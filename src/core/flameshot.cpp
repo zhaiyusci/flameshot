@@ -99,13 +99,55 @@ QScreen* currentOrPrimaryScreen()
     return screen;
 }
 
+QSize logicalPixmapSize(const QPixmap& pixmap)
+{
+    if (pixmap.devicePixelRatio() <= 1.0) {
+        return pixmap.size();
+    }
+    return QSize(static_cast<int>(std::ceil(pixmap.width() /
+                                            pixmap.devicePixelRatio())),
+                 static_cast<int>(std::ceil(pixmap.height() /
+                                            pixmap.devicePixelRatio())));
+}
+
+QPixmap constrainPixmapToScreen(const QPixmap& pixmap)
+{
+    QScreen* screen = currentOrPrimaryScreen();
+    if (!screen || pixmap.isNull()) {
+        return pixmap;
+    }
+
+    constexpr int pinWindowPadding = 32;
+    QSize maxSize =
+      screen->availableGeometry().size() -
+      QSize(pinWindowPadding, pinWindowPadding);
+    maxSize = maxSize.expandedTo(QSize(1, 1));
+
+    const QSize logicalSize = logicalPixmapSize(pixmap);
+    if (logicalSize.width() <= maxSize.width() &&
+        logicalSize.height() <= maxSize.height()) {
+        return pixmap;
+    }
+
+    QSize targetLogicalSize = logicalSize;
+    targetLogicalSize.scale(maxSize, Qt::KeepAspectRatio);
+
+    const qreal dpr = pixmap.devicePixelRatio();
+    const QSize targetPhysicalSize(
+      std::max(1, static_cast<int>(std::ceil(targetLogicalSize.width() * dpr))),
+      std::max(
+        1, static_cast<int>(std::ceil(targetLogicalSize.height() * dpr))));
+
+    QPixmap scaled = pixmap.scaled(targetPhysicalSize,
+                                   Qt::KeepAspectRatio,
+                                   Qt::SmoothTransformation);
+    scaled.setDevicePixelRatio(dpr);
+    return scaled;
+}
+
 QRect centeredPinGeometry(const QPixmap& pixmap)
 {
-    QSize pinSize = pixmap.size();
-    if (pixmap.devicePixelRatio() > 1.0) {
-        pinSize = QSize(pixmap.width() / pixmap.devicePixelRatio(),
-                        pixmap.height() / pixmap.devicePixelRatio());
-    }
+    QSize pinSize = logicalPixmapSize(pixmap);
 
     QRect geometry(QPoint(), pinSize);
     QScreen* screen = currentOrPrimaryScreen();
@@ -345,7 +387,7 @@ void Flameshot::pinImage()
         return;
     }
 
-    const QPixmap pixmap = QPixmap::fromImage(image);
+    const QPixmap pixmap = constrainPixmapToScreen(QPixmap::fromImage(image));
     FlameshotDaemon::createPin(pixmap, centeredPinGeometry(pixmap));
 }
 
@@ -361,14 +403,17 @@ void Flameshot::pinClipboard()
     }
 
     QPixmap pixmap;
+    bool clipboardPixmapShouldFitScreen = false;
     if (mimeData->hasImage()) {
         pixmap = pixmapFromImageData(mimeData->imageData());
+        clipboardPixmapShouldFitScreen = !pixmap.isNull();
     }
 
     if (pixmap.isNull() && mimeData->hasUrls()) {
         for (const QUrl& url : mimeData->urls()) {
             pixmap = pixmapFromImageUrl(url);
             if (!pixmap.isNull()) {
+                clipboardPixmapShouldFitScreen = true;
                 break;
             }
         }
@@ -387,6 +432,10 @@ void Flameshot::pinClipboard()
           tr("Pin Clipboard"),
           tr("The clipboard does not contain an image or text."));
         return;
+    }
+
+    if (clipboardPixmapShouldFitScreen) {
+        pixmap = constrainPixmapToScreen(pixmap);
     }
 
     FlameshotDaemon::createPin(pixmap, centeredPinGeometry(pixmap));
