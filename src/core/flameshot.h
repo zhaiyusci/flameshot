@@ -56,6 +56,7 @@ public slots:
 
     void info();
     void pinImage();
+    void pinClipboard();
 
 #ifdef ENABLE_IMGUR
     void history();

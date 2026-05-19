@@ -62,21 +62,147 @@ constexpr const char* visibleInDockProperty = "_visibleInDock";
 
 #include <QApplication>
 #include <QBuffer>
+#include <QClipboard>
 #include <QDebug>
 #include <QDesktopServices>
 #include <QFile>
 #include <QFileDialog>
+#include <QFontMetrics>
 #include <QImageReader>
 #include <QMessageBox>
+#include <QMimeData>
+#include <QPainter>
+#include <QPainterPath>
 #include <QScreen>
 #include <QThread>
 #include <QTimer>
+#include <QTextDocument>
+#include <QTextOption>
 #include <QUrl>
 #include <QVersionNumber>
+
+#include <algorithm>
+#include <cmath>
 
 #if defined(Q_OS_MACOS)
 #include <QScreen>
 #endif
+
+namespace {
+
+QScreen* currentOrPrimaryScreen()
+{
+    QScreen* screen = QGuiAppCurrentScreen().currentScreen();
+    if (!screen) {
+        screen = QGuiApplication::primaryScreen();
+    }
+    return screen;
+}
+
+QRect centeredPinGeometry(const QPixmap& pixmap)
+{
+    QSize pinSize = pixmap.size();
+    if (pixmap.devicePixelRatio() > 1.0) {
+        pinSize = QSize(pixmap.width() / pixmap.devicePixelRatio(),
+                        pixmap.height() / pixmap.devicePixelRatio());
+    }
+
+    QRect geometry(QPoint(), pinSize);
+    QScreen* screen = currentOrPrimaryScreen();
+    if (screen) {
+        geometry.moveCenter(screen->availableGeometry().center());
+    }
+    return geometry;
+}
+
+QPixmap pixmapFromImageData(const QVariant& imageData)
+{
+    if (imageData.canConvert<QImage>()) {
+        const QImage image = qvariant_cast<QImage>(imageData);
+        if (!image.isNull()) {
+            return QPixmap::fromImage(image);
+        }
+    }
+    if (imageData.canConvert<QPixmap>()) {
+        const QPixmap pixmap = qvariant_cast<QPixmap>(imageData);
+        if (!pixmap.isNull()) {
+            return pixmap;
+        }
+    }
+    return {};
+}
+
+QPixmap pixmapFromImageUrl(const QUrl& url)
+{
+    if (!url.isLocalFile()) {
+        return {};
+    }
+
+    QImageReader reader(url.toLocalFile());
+    reader.setAutoTransform(true);
+    const QImage image = reader.read();
+    if (image.isNull()) {
+        return {};
+    }
+    return QPixmap::fromImage(image);
+}
+
+QPixmap renderTextPin(const QString& text)
+{
+    QScreen* screen = currentOrPrimaryScreen();
+    const QSize available =
+      screen ? screen->availableGeometry().size() : QSize(1600, 900);
+    const qreal dpr = screen ? screen->devicePixelRatio() : 1.0;
+
+    QFont font = QApplication::font();
+    const int pointSize = font.pointSize() > 0 ? font.pointSize() : 11;
+    font.setPointSize(std::max(pointSize, 12));
+
+    QTextOption option;
+    option.setWrapMode(QTextOption::WrapAtWordBoundaryOrAnywhere);
+
+    QTextDocument doc;
+    doc.setDefaultFont(font);
+    doc.setDefaultTextOption(option);
+    doc.setDocumentMargin(0);
+    doc.setPlainText(text);
+
+    const int padding = 22;
+    const int minTextWidth = 260;
+    const int maxTextWidth =
+      std::clamp(static_cast<int>(available.width() * 0.55), 420, 920);
+    doc.setTextWidth(maxTextWidth);
+    const int textWidth =
+      std::clamp(static_cast<int>(std::ceil(doc.idealWidth())),
+                 minTextWidth,
+                 maxTextWidth);
+    doc.setTextWidth(textWidth);
+
+    const QSize logicalSize(textWidth + padding * 2,
+                            static_cast<int>(std::ceil(doc.size().height())) +
+                              padding * 2);
+    QPixmap pixmap(logicalSize * dpr);
+    pixmap.setDevicePixelRatio(dpr);
+    pixmap.fill(Qt::transparent);
+
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    painter.setRenderHint(QPainter::TextAntialiasing, true);
+
+    QRectF card(QPointF(0, 0), QSizeF(logicalSize));
+    card.adjust(0.5, 0.5, -0.5, -0.5);
+    QPainterPath path;
+    path.addRoundedRect(card, 6, 6);
+    painter.fillPath(path, QColor(250, 250, 250));
+    painter.setPen(QPen(QColor(200, 200, 200), 1));
+    painter.drawPath(path);
+
+    painter.translate(padding, padding);
+    doc.drawContents(&painter);
+    return pixmap;
+}
+
+} // namespace
 
 Flameshot::Flameshot()
   : m_haveExternalWidget(false)
@@ -220,21 +346,50 @@ void Flameshot::pinImage()
     }
 
     const QPixmap pixmap = QPixmap::fromImage(image);
-    QSize pinSize = pixmap.size();
-    if (pixmap.devicePixelRatio() > 1.0) {
-        pinSize = QSize(pixmap.width() / pixmap.devicePixelRatio(),
-                        pixmap.height() / pixmap.devicePixelRatio());
+    FlameshotDaemon::createPin(pixmap, centeredPinGeometry(pixmap));
+}
+
+void Flameshot::pinClipboard()
+{
+    if (!resolveAnyConfigErrors()) {
+        return;
     }
 
-    QRect geometry(QPoint(), pinSize);
-    QScreen* screen = QGuiAppCurrentScreen().currentScreen();
-    if (!screen) {
-        screen = QGuiApplication::primaryScreen();
+    const QMimeData* mimeData = QApplication::clipboard()->mimeData();
+    if (!mimeData) {
+        return;
     }
-    if (screen) {
-        geometry.moveCenter(screen->availableGeometry().center());
+
+    QPixmap pixmap;
+    if (mimeData->hasImage()) {
+        pixmap = pixmapFromImageData(mimeData->imageData());
     }
-    FlameshotDaemon::createPin(pixmap, geometry);
+
+    if (pixmap.isNull() && mimeData->hasUrls()) {
+        for (const QUrl& url : mimeData->urls()) {
+            pixmap = pixmapFromImageUrl(url);
+            if (!pixmap.isNull()) {
+                break;
+            }
+        }
+    }
+
+    if (pixmap.isNull() && mimeData->hasText()) {
+        const QString text = mimeData->text();
+        if (!text.isEmpty()) {
+            pixmap = renderTextPin(text);
+        }
+    }
+
+    if (pixmap.isNull()) {
+        QMessageBox::information(
+          nullptr,
+          tr("Pin Clipboard"),
+          tr("The clipboard does not contain an image or text."));
+        return;
+    }
+
+    FlameshotDaemon::createPin(pixmap, centeredPinGeometry(pixmap));
 }
 
 void Flameshot::screen(CaptureRequest req, const int screenNumber)

@@ -140,6 +140,11 @@ void TrayIcon::initMenu()
             &QAction::triggered,
             Flameshot::instance(),
             &Flameshot::pinImage);
+    m_pinClipboardAction = new QAction(tr("Pin &Clipboard"), this);
+    connect(m_pinClipboardAction,
+            &QAction::triggered,
+            Flameshot::instance(),
+            &Flameshot::pinClipboard);
     m_ocrJobsAction = new QAction(tr("Background &Tasks"), this);
     connect(m_ocrJobsAction,
             &QAction::triggered,
@@ -202,6 +207,7 @@ void TrayIcon::initMenu()
 
     m_menu->addAction(m_captureAction);
     m_menu->addAction(m_pinImageAction);
+    m_menu->addAction(m_pinClipboardAction);
     m_menu->addAction(m_launcherAction);
     m_menu->addAction(m_ocrJobsAction);
     m_menu->addSeparator();

@@ -31,6 +31,7 @@ private:
     QMenu* m_screenMenu;
     QAction* m_captureAction;
     QAction* m_pinImageAction;
+    QAction* m_pinClipboardAction;
     QAction* m_launcherAction;
     QAction* m_ocrJobsAction;
     QAction* m_infoAction;
