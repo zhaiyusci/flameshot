@@ -14,6 +14,7 @@ class QDBusConnection;
 class QTimer;
 class TrayIcon;
 class CaptureWidget;
+class CaptureToolObjects;
 class OcrJobManagerWidget;
 
 #if !defined(DISABLE_UPDATE_CHECKER)
@@ -29,6 +30,10 @@ public:
     static void start();
     static FlameshotDaemon* instance();
     static void createPin(const QPixmap& capture, QRect geometry);
+    static void createPin(const QPixmap& capture,
+                          QRect geometry,
+                          const QPixmap& baseCapture,
+                          const CaptureToolObjects& captureToolObjects);
     static void copyToClipboard(const QPixmap& capture);
     static void copyToClipboard(const QString& text,
                                 const QString& notification = "");
@@ -67,6 +72,10 @@ private:
     bool isIdle() const;
     void quitIfIdle();
     void attachPin(const QPixmap& pixmap, QRect geometry);
+    void attachPin(const QPixmap& pixmap,
+                   QRect geometry,
+                   const QPixmap& baseCapture,
+                   const CaptureToolObjects& captureToolObjects);
     void attachScreenshotToClipboard(const QPixmap& pixmap);
 
     void attachPin(const QByteArray& data);

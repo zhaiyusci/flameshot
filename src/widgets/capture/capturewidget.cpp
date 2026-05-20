@@ -388,10 +388,18 @@ CaptureWidget::~CaptureWidget()
         QRect geometry(m_context.selection);
         geometry.setTopLeft(geometry.topLeft() + m_context.widgetOffset);
         const QPixmap capture = pixmap();
+        const QPixmap baseCapture = selectedOriginalScreenshotArea();
+        CaptureToolObjects captureToolObjects;
+        copySelectedCaptureToolObjectsTo(captureToolObjects,
+                                         &captureToolObjects,
+                                         baseCapture.deviceIndependentSize());
         emit captureCommitted(capture,
                               static_cast<int>(m_context.request.tasks()));
-        Flameshot::instance()->exportCapture(
-          capture, geometry, m_context.request);
+        Flameshot::instance()->exportCapture(capture,
+                                             geometry,
+                                             m_context.request,
+                                             baseCapture,
+                                             &captureToolObjects);
     } else if (!m_closeWithoutCapture) {
         emit Flameshot::instance() -> captureFailed();
     }
@@ -573,6 +581,38 @@ void CaptureWidget::initHelpMessage()
 QPixmap CaptureWidget::pixmap()
 {
     return m_context.selectedScreenshotArea();
+}
+
+QPixmap CaptureWidget::selectedOriginalScreenshotArea() const
+{
+    if (m_context.selection.isNull()) {
+        return m_context.origScreenshot;
+    }
+    return m_context.origScreenshot.copy(m_context.selection);
+}
+
+void CaptureWidget::copySelectedCaptureToolObjectsTo(
+  CaptureToolObjects& target,
+  QObject* toolParent,
+  const QSizeF& targetSize) const
+{
+    QRectF sourceRect(QPointF(0, 0),
+                      m_context.origScreenshot.deviceIndependentSize());
+    if (!m_context.selection.isNull()) {
+        const qreal scale = m_context.origScreenshot.devicePixelRatio();
+        const qreal dpr = scale > 0.0 ? scale : 1.0;
+        sourceRect = QRectF(QPointF(m_context.selection.left() / dpr,
+                                    m_context.selection.top() / dpr),
+                            QSizeF(m_context.selection.width() / dpr,
+                                   m_context.selection.height() / dpr));
+    }
+
+    const QSizeF mappedSize =
+      targetSize.isValid() ? targetSize : sourceRect.size();
+    target.assignMappedFrom(m_captureToolObjects,
+                            sourceRect,
+                            QRectF(QPointF(0, 0), mappedSize),
+                            toolParent);
 }
 
 // Finish whatever the current tool is doing, if there is a current active
@@ -2215,7 +2255,7 @@ void CaptureWidget::setCaptureToolObjects(
   const CaptureToolObjects& captureToolObjects)
 {
     // Used for undo/redo
-    m_captureToolObjects = captureToolObjects;
+    m_captureToolObjects.assignFrom(captureToolObjects, this);
     drawToolsData();
     updateLayersPanel();
     drawObjectSelection();

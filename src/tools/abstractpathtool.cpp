@@ -5,6 +5,17 @@
 
 #include <cmath>
 
+namespace {
+QPoint transformedPoint(const QPoint& point,
+                        const QPointF& scale,
+                        const QPointF& offset)
+{
+    return QPointF(point.x() * scale.x() + offset.x(),
+                   point.y() * scale.y() + offset.y())
+      .toPoint();
+}
+}
+
 AbstractPathTool::AbstractPathTool(QObject* parent)
   : CaptureTool(parent)
   , m_thickness(1)
@@ -151,4 +162,26 @@ const QPoint* AbstractPathTool::pos()
     m_pos.setX(x);
     m_pos.setY(y);
     return &m_pos;
+}
+
+void AbstractPathTool::transform(const QPointF& scale, const QPointF& offset)
+{
+    if (m_points.empty()) {
+        return;
+    }
+
+    bool first = true;
+    for (auto& point : m_points) {
+        point = transformedPoint(point, scale, offset);
+        if (first) {
+            m_pathArea = QRect(point, point);
+            first = false;
+        } else {
+            m_pathArea = m_pathArea.united(QRect(point, point));
+        }
+    }
+
+    const qreal thicknessScale =
+      (std::abs(scale.x()) + std::abs(scale.y())) / 2.0;
+    m_thickness = qMax(1, qRound(m_thickness * thicknessScale));
 }

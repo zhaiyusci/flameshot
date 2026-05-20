@@ -154,6 +154,21 @@ void FlameshotDaemon::createPin(const QPixmap& capture, QRect geometry)
 #endif
 }
 
+void FlameshotDaemon::createPin(
+  const QPixmap& capture,
+  QRect geometry,
+  const QPixmap& baseCapture,
+  const CaptureToolObjects& captureToolObjects)
+{
+    if (instance()) {
+        instance()->attachPin(
+          capture, geometry, baseCapture, captureToolObjects);
+        return;
+    }
+
+    createPin(capture, geometry);
+}
+
 void FlameshotDaemon::copyToClipboard(const QPixmap& capture)
 {
     if (instance()) {
@@ -368,6 +383,25 @@ void FlameshotDaemon::attachPin(const QPixmap& pixmap, QRect geometry)
 {
     m_idleQuitTimer->stop();
     auto* pinWidget = new PinWidget(pixmap, geometry);
+    m_widgets.append(pinWidget);
+    connect(pinWidget, &QObject::destroyed, this, [=, this]() {
+        m_widgets.removeOne(pinWidget);
+        quitIfIdle();
+    });
+
+    pinWidget->show();
+    pinWidget->activateWindow();
+}
+
+void FlameshotDaemon::attachPin(
+  const QPixmap& pixmap,
+  QRect geometry,
+  const QPixmap& baseCapture,
+  const CaptureToolObjects& captureToolObjects)
+{
+    m_idleQuitTimer->stop();
+    auto* pinWidget =
+      new PinWidget(pixmap, geometry, baseCapture, captureToolObjects);
     m_widgets.append(pinWidget);
     connect(pinWidget, &QObject::destroyed, this, [=, this]() {
         m_widgets.removeOne(pinWidget);

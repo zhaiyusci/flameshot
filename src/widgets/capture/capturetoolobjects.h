@@ -12,14 +12,27 @@ class CaptureToolObjects : public QObject
 {
 public:
     explicit CaptureToolObjects(QObject* parent = nullptr);
-    QList<QPointer<CaptureTool>> captureToolObjects();
+    QList<QPointer<CaptureTool>> captureToolObjects() const;
     void append(const QPointer<CaptureTool>& captureTool);
     void insert(int index, const QPointer<CaptureTool>& captureTool);
     void removeAt(int index);
     void clear();
-    int size();
+    int size() const;
     int find(const QPoint& pos, QSize captureSize);
     QPointer<CaptureTool> at(int index);
+    void assignFrom(const CaptureToolObjects& other,
+                    QObject* toolParent = nullptr);
+    void assignTranslatedFrom(const CaptureToolObjects& other,
+                              const QPoint& offset,
+                              QObject* toolParent = nullptr);
+    void assignTransformedFrom(const CaptureToolObjects& other,
+                               const QPointF& scale,
+                               const QPointF& offset,
+                               QObject* toolParent = nullptr);
+    void assignMappedFrom(const CaptureToolObjects& other,
+                          const QRectF& sourceRect,
+                          const QRectF& targetRect,
+                          QObject* toolParent = nullptr);
     CaptureToolObjects& operator=(const CaptureToolObjects& other);
 
 private:

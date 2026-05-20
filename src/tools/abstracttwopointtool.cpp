@@ -27,6 +27,34 @@ enum DIAG_UNIT
     DIR1 = 0
 };
 
+QPoint transformedPoint(const QPoint& point,
+                        const QPointF& scale,
+                        const QPointF& offset)
+{
+    return QPointF(point.x() * scale.x() + offset.x(),
+                   point.y() * scale.y() + offset.y())
+      .toPoint();
+}
+
+QPoint remappedPoint(const QPoint& point,
+                     const QRectF& sourceRect,
+                     const QRectF& targetRect)
+{
+    const qreal sourceWidth = sourceRect.width() - 1.0;
+    const qreal sourceHeight = sourceRect.height() - 1.0;
+    const qreal targetWidth = targetRect.width() - 1.0;
+    const qreal targetHeight = targetRect.height() - 1.0;
+    const qreal xRatio = sourceWidth > 0.0
+                           ? (point.x() - sourceRect.left()) / sourceWidth
+                           : 0.0;
+    const qreal yRatio = sourceHeight > 0.0
+                           ? (point.y() - sourceRect.top()) / sourceHeight
+                           : 0.0;
+    return QPointF(targetRect.left() + xRatio * qMax<qreal>(0.0, targetWidth),
+                   targetRect.top() + yRatio * qMax<qreal>(0.0, targetHeight))
+      .toPoint();
+}
+
 }
 
 AbstractTwoPointTool::AbstractTwoPointTool(QObject* parent)
@@ -214,4 +242,18 @@ void AbstractTwoPointTool::move(const QPoint& pos)
 const QPoint* AbstractTwoPointTool::pos()
 {
     return &m_points.first;
+}
+
+void AbstractTwoPointTool::transform(const QPointF& scale,
+                                     const QPointF& offset)
+{
+    m_points.first = transformedPoint(m_points.first, scale, offset);
+    m_points.second = transformedPoint(m_points.second, scale, offset);
+}
+
+void AbstractTwoPointTool::remap(const QRectF& sourceRect,
+                                 const QRectF& targetRect)
+{
+    m_points.first = remappedPoint(m_points.first, sourceRect, targetRect);
+    m_points.second = remappedPoint(m_points.second, sourceRect, targetRect);
 }

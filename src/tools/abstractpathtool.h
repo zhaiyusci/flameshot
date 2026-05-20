@@ -19,6 +19,7 @@ public:
     QRect boundingRect() const override;
     void move(const QPoint& mousePos) override;
     const QPoint* pos() override;
+    void transform(const QPointF& scale, const QPointF& offset) override;
     int size() const override { return m_thickness; };
 
 public slots:

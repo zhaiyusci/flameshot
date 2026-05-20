@@ -51,12 +51,24 @@ void fillEditorBackground(QPixmap& pixmap)
 PinWidget::PinWidget(const QPixmap& pixmap,
                      const QRect& geometry,
                      QWidget* parent)
+  : PinWidget(pixmap, geometry, pixmap, CaptureToolObjects(), parent)
+{}
+
+PinWidget::PinWidget(const QPixmap& pixmap,
+                     const QRect& geometry,
+                     const QPixmap& basePixmap,
+                     const CaptureToolObjects& captureToolObjects,
+                     QWidget* parent)
   : QWidget(parent)
   , m_pixmap(pixmap)
+  , m_basePixmap(basePixmap.isNull() ? pixmap : basePixmap)
+  , m_captureToolObjects()
   , m_layout(new QVBoxLayout(this))
   , m_label(new QLabel())
   , m_shadowEffect(new QGraphicsDropShadowEffect(this))
 {
+    m_captureToolObjects.assignFrom(captureToolObjects, this);
+
     setWindowIcon(QIcon(GlobalValues::iconPath()));
     DesktopInfo desktopInfo;
     Qt::WindowFlags windowFlags =
@@ -146,12 +158,68 @@ void PinWidget::setPinnedPixmap(const QPixmap& pixmap)
     }
 
     m_pixmap = pixmap;
+    m_basePixmap = pixmap;
+    clearStoredCaptureToolObjects();
     m_scaleFactor = 1;
     m_currentStepScaleFactor = 1;
     m_expanding = false;
     m_sizeChanged = false;
     m_label->setPixmap(m_pixmap);
     adjustSize();
+}
+
+void PinWidget::setPinnedState(const QPixmap& displayedPixmap,
+                               const QPixmap& basePixmap,
+                               const CaptureToolObjects& captureToolObjects)
+{
+    if (displayedPixmap.isNull() && basePixmap.isNull()) {
+        return;
+    }
+
+    m_pixmap = displayedPixmap.isNull() ? basePixmap : displayedPixmap;
+    m_basePixmap = basePixmap.isNull() ? m_pixmap : basePixmap;
+    clearStoredCaptureToolObjects();
+    m_captureToolObjects.assignFrom(captureToolObjects, this);
+    m_scaleFactor = 1;
+    m_currentStepScaleFactor = 1;
+    m_expanding = false;
+    m_sizeChanged = false;
+    m_label->setPixmap(m_pixmap);
+    adjustSize();
+}
+
+QPixmap PinWidget::renderPinnedPixmap() const
+{
+    QPixmap pixmap = m_basePixmap.isNull() ? m_pixmap : m_basePixmap;
+    if (pixmap.isNull()) {
+        return pixmap;
+    }
+
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing);
+    for (const auto& toolItem : m_captureToolObjects.captureToolObjects()) {
+        if (!toolItem.isNull()) {
+            toolItem->process(painter, pixmap);
+        }
+    }
+    return pixmap;
+}
+
+bool PinWidget::editableStateMatchesDisplayedPixmap(const QPixmap& pixmap) const
+{
+    Q_UNUSED(pixmap)
+    return !m_basePixmap.isNull() && m_captureToolObjects.size() > 0;
+}
+
+void PinWidget::clearStoredCaptureToolObjects()
+{
+    const auto toolObjects = m_captureToolObjects.captureToolObjects();
+    m_captureToolObjects.clear();
+    for (auto toolObject : toolObjects) {
+        if (!toolObject.isNull() && toolObject->parent() == this) {
+            delete toolObject;
+        }
+    }
 }
 
 bool PinWidget::scrollEvent(QWheelEvent* event)
@@ -278,7 +346,9 @@ void PinWidget::rotateLeft()
     m_sizeChanged = true;
 
     auto rotateTransform = QTransform().rotate(270);
-    m_pixmap = m_pixmap.transformed(rotateTransform);
+    m_basePixmap = m_pixmap.transformed(rotateTransform);
+    clearStoredCaptureToolObjects();
+    m_pixmap = m_basePixmap;
 }
 
 void PinWidget::rotateRight()
@@ -286,7 +356,9 @@ void PinWidget::rotateRight()
     m_sizeChanged = true;
 
     auto rotateTransform = QTransform().rotate(90);
-    m_pixmap = m_pixmap.transformed(rotateTransform);
+    m_basePixmap = m_pixmap.transformed(rotateTransform);
+    clearStoredCaptureToolObjects();
+    m_pixmap = m_basePixmap;
 }
 
 void PinWidget::openTools()
@@ -305,6 +377,10 @@ void PinWidget::openTools()
     if (editorPixmap.isNull()) {
         return;
     }
+    const bool useEditableState =
+      editableStateMatchesDisplayedPixmap(editorPixmap);
+    const QPixmap editorBasePixmap =
+      useEditableState ? m_basePixmap : editorPixmap;
 
     const QRect imageGlobalRect(m_label->mapToGlobal(QPoint(0, 0)),
                                 m_label->size());
@@ -332,7 +408,7 @@ void PinWidget::openTools()
     QPixmap editorPixmapOnScreen(screenGeometry.size());
     fillEditorBackground(editorPixmapOnScreen);
     QPainter painter(&editorPixmapOnScreen);
-    painter.drawPixmap(imageLocalRect, editorPixmap);
+    painter.drawPixmap(imageLocalRect, editorBasePixmap);
     painter.end();
 
     const auto screens = QGuiApplication::screens();
@@ -350,6 +426,15 @@ void PinWidget::openTools()
     hide();
 
     auto* editor = new CaptureWidget(request, editorPixmapOnScreen, true);
+    if (useEditableState) {
+        const QSizeF sourceSize = editorBasePixmap.deviceIndependentSize();
+        CaptureToolObjects editorObjects;
+        editorObjects.assignMappedFrom(m_captureToolObjects,
+                                       QRectF(QPointF(0, 0), sourceSize),
+                                       QRectF(imageLocalRect),
+                                       &editorObjects);
+        editor->setCaptureToolObjects(editorObjects);
+    }
     m_editor = editor;
     connect(editor,
             &CaptureWidget::captureCommitted,
@@ -357,7 +442,19 @@ void PinWidget::openTools()
             [this, editor](const QPixmap& pixmap, int tasks) {
                 if (m_editor == editor &&
                     tasks == static_cast<int>(CaptureRequest::NO_TASK)) {
-                    setPinnedPixmap(pixmap);
+                    CaptureToolObjects captureToolObjects;
+                    const QPixmap basePixmap =
+                      editor->selectedOriginalScreenshotArea();
+                    editor->copySelectedCaptureToolObjectsTo(
+                      captureToolObjects,
+                      &captureToolObjects,
+                      basePixmap.deviceIndependentSize());
+                    if (captureToolObjects.size() > 0) {
+                        setPinnedState(
+                          pixmap, basePixmap, captureToolObjects);
+                    } else {
+                        setPinnedPixmap(pixmap);
+                    }
                 }
             });
 

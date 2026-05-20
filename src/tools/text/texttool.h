@@ -40,6 +40,7 @@ public:
                            const CaptureContext& context) override;
     void move(const QPoint& pos) override;
     const QPoint* pos() override;
+    void transform(const QPointF& scale, const QPointF& offset) override;
     void drawObjectSelection(QPainter& painter) override;
 
     void setEditMode(bool editMode) override;

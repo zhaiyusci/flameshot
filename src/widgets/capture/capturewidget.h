@@ -67,6 +67,10 @@ public:
     ~CaptureWidget();
 
     QPixmap pixmap();
+    QPixmap selectedOriginalScreenshotArea() const;
+    void copySelectedCaptureToolObjectsTo(CaptureToolObjects& target,
+                                          QObject* toolParent = nullptr,
+                                          const QSizeF& targetSize = {}) const;
     void setCaptureToolObjects(const CaptureToolObjects& captureToolObjects);
 #if !defined(DISABLE_UPDATE_CHECKER)
     void showAppUpdateNotification(const QString& appLatestVersion,

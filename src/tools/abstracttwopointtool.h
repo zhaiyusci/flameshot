@@ -20,6 +20,8 @@ public:
     void drawObjectSelection(QPainter& painter) override;
     void move(const QPoint& pos) override;
     const QPoint* pos() override;
+    void transform(const QPointF& scale, const QPointF& offset) override;
+    void remap(const QRectF& sourceRect, const QRectF& targetRect) override;
     int size() const override { return m_thickness; };
     const QColor& color() { return m_color; };
     const QPair<QPoint, QPoint> points() const { return m_points; };

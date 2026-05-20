@@ -709,7 +709,9 @@ void Flameshot::requestCapture(const CaptureRequest& request)
 
 void Flameshot::exportCapture(const QPixmap& capture,
                               QRect& selection,
-                              const CaptureRequest& req)
+                              const CaptureRequest& req,
+                              const QPixmap& baseCapture,
+                              const CaptureToolObjects* captureToolObjects)
 {
     using CR = CaptureRequest;
     int tasks = req.tasks(), mode = req.captureMode();
@@ -744,7 +746,12 @@ void Flameshot::exportCapture(const QPixmap& capture,
     }
 
     if (tasks & CR::PIN) {
-        FlameshotDaemon::createPin(capture, selection);
+        if (captureToolObjects != nullptr && !baseCapture.isNull()) {
+            FlameshotDaemon::createPin(
+              capture, selection, baseCapture, *captureToolObjects);
+        } else {
+            FlameshotDaemon::createPin(capture, selection);
+        }
         if (mode == CR::SCREEN_MODE || mode == CR::FULLSCREEN_MODE) {
             AbstractLogger::info()
               << QObject::tr("Full screen screenshot pinned to screen");

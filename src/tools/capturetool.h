@@ -9,6 +9,7 @@
 
 #include <QIcon>
 #include <QPainter>
+#include <QPointF>
 
 class CaptureTool : public QObject
 {
@@ -166,6 +167,28 @@ public:
     // Move tool objects
     virtual void move(const QPoint& pos) { Q_UNUSED(pos) };
     virtual const QPoint* pos() { return nullptr; };
+    virtual void transform(const QPointF& scale, const QPointF& offset)
+    {
+        if (const QPoint* currentPos = pos()) {
+            const QPointF transformed(currentPos->x() * scale.x() +
+                                        offset.x(),
+                                      currentPos->y() * scale.y() +
+                                        offset.y());
+            move(transformed.toPoint());
+        }
+    };
+    virtual void remap(const QRectF& sourceRect, const QRectF& targetRect)
+    {
+        const QPointF scale(sourceRect.width() != 0
+                              ? targetRect.width() / sourceRect.width()
+                              : 1.0,
+                            sourceRect.height() != 0
+                              ? targetRect.height() / sourceRect.height()
+                              : 1.0);
+        const QPointF offset(targetRect.left() - sourceRect.left() * scale.x(),
+                             targetRect.top() - sourceRect.top() * scale.y());
+        transform(scale, offset);
+    };
 
 signals:
     void requestAction(Request r);

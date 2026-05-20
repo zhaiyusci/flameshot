@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include "widgets/capture/capturetoolobjects.h"
+
 #include <QPointer>
 #include <QWidget>
 
@@ -19,6 +21,11 @@ class PinWidget : public QWidget
 public:
     explicit PinWidget(const QPixmap& pixmap,
                        const QRect& geometry,
+                       QWidget* parent = nullptr);
+    explicit PinWidget(const QPixmap& pixmap,
+                       const QRect& geometry,
+                       const QPixmap& basePixmap,
+                       const CaptureToolObjects& captureToolObjects,
                        QWidget* parent = nullptr);
     ~PinWidget() override;
 
@@ -40,6 +47,12 @@ private:
     void pinchTriggered(QPinchGesture*);
     void closePin();
     void setPinnedPixmap(const QPixmap& pixmap);
+    void setPinnedState(const QPixmap& displayedPixmap,
+                        const QPixmap& basePixmap,
+                        const CaptureToolObjects& captureToolObjects);
+    QPixmap renderPinnedPixmap() const;
+    bool editableStateMatchesDisplayedPixmap(const QPixmap& pixmap) const;
+    void clearStoredCaptureToolObjects();
 
     void rotateLeft();
     void rotateRight();
@@ -49,6 +62,8 @@ private:
     void decreaseOpacity();
 
     QPixmap m_pixmap;
+    QPixmap m_basePixmap;
+    CaptureToolObjects m_captureToolObjects;
     QVBoxLayout* m_layout;
     QLabel* m_label;
     QPointer<CaptureWidget> m_editor;

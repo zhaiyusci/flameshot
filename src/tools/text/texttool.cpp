@@ -6,6 +6,8 @@
 #include "tools/text/textwidget.h"
 #include "utils/confighandler.h"
 
+#include <cmath>
+
 #define BASE_POINT_SIZE 8
 #define MAX_INFO_LENGTH 24
 
@@ -327,6 +329,26 @@ void TextTool::updateFontItalic(const bool italic)
 void TextTool::move(const QPoint& pos)
 {
     m_textArea.moveTo(pos);
+}
+
+void TextTool::transform(const QPointF& scale, const QPointF& offset)
+{
+    const QPointF transformedTopLeft(m_textArea.left() * scale.x() +
+                                      offset.x(),
+                                    m_textArea.top() * scale.y() +
+                                      offset.y());
+    const QSize transformedSize(
+      qMax(1, qRound(m_textArea.width() * std::abs(scale.x()))),
+      qMax(1, qRound(m_textArea.height() * std::abs(scale.y()))));
+    m_textArea = QRect(transformedTopLeft.toPoint(), transformedSize);
+
+    const qreal fontScale =
+      (std::abs(scale.x()) + std::abs(scale.y())) / 2.0;
+    m_size = qMax(1, qRound(m_size * fontScale));
+    m_font.setPointSize(m_size + BASE_POINT_SIZE);
+    if (m_widget != nullptr) {
+        m_widget->setFont(m_font);
+    }
 }
 
 void TextTool::updateAlignment(Qt::AlignmentFlag alignment)

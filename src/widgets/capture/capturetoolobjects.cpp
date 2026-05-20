@@ -41,14 +41,15 @@ QPointer<CaptureTool> CaptureToolObjects::at(int index)
 void CaptureToolObjects::clear()
 {
     m_captureToolObjects.clear();
+    m_imageCache.clear();
 }
 
-QList<QPointer<CaptureTool>> CaptureToolObjects::captureToolObjects()
+QList<QPointer<CaptureTool>> CaptureToolObjects::captureToolObjects() const
 {
     return m_captureToolObjects;
 }
 
-int CaptureToolObjects::size()
+int CaptureToolObjects::size() const
 {
     return m_captureToolObjects.size();
 }
@@ -59,6 +60,70 @@ void CaptureToolObjects::removeAt(int index)
         m_captureToolObjects.removeAt(index);
         m_imageCache.clear();
     }
+}
+
+void CaptureToolObjects::assignFrom(const CaptureToolObjects& other,
+                                    QObject* toolParent)
+{
+    assignTranslatedFrom(other, QPoint(), toolParent);
+}
+
+void CaptureToolObjects::assignTranslatedFrom(
+  const CaptureToolObjects& other,
+  const QPoint& offset,
+  QObject* toolParent)
+{
+    assignTransformedFrom(other,
+                          QPointF(1.0, 1.0),
+                          QPointF(offset),
+                          toolParent);
+}
+
+void CaptureToolObjects::assignTransformedFrom(
+  const CaptureToolObjects& other,
+  const QPointF& scale,
+  const QPointF& offset,
+  QObject* toolParent)
+{
+    clear();
+
+    for (const auto& item : other.m_captureToolObjects) {
+        if (item.isNull()) {
+            continue;
+        }
+        QPointer<CaptureTool> itemCopy =
+          item->copy(toolParent ? toolParent : item->parent());
+        if (itemCopy.isNull()) {
+            continue;
+        }
+        itemCopy->transform(scale, offset);
+        m_captureToolObjects.append(itemCopy);
+    }
+
+    m_imageCache.clear();
+}
+
+void CaptureToolObjects::assignMappedFrom(const CaptureToolObjects& other,
+                                          const QRectF& sourceRect,
+                                          const QRectF& targetRect,
+                                          QObject* toolParent)
+{
+    clear();
+
+    for (const auto& item : other.m_captureToolObjects) {
+        if (item.isNull()) {
+            continue;
+        }
+        QPointer<CaptureTool> itemCopy =
+          item->copy(toolParent ? toolParent : item->parent());
+        if (itemCopy.isNull()) {
+            continue;
+        }
+        itemCopy->remap(sourceRect, targetRect);
+        m_captureToolObjects.append(itemCopy);
+    }
+
+    m_imageCache.clear();
 }
 
 int CaptureToolObjects::find(const QPoint& pos, QSize captureSize)

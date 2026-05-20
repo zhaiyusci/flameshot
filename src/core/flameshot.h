@@ -11,6 +11,7 @@
 #include <QWindow>
 
 class CaptureWidget;
+class CaptureToolObjects;
 class ConfigWindow;
 class InfoWindow;
 class CaptureLauncher;
@@ -80,7 +81,9 @@ public slots:
     void requestCapture(const CaptureRequest& request);
     void exportCapture(const QPixmap& p,
                        QRect& selection,
-                       const CaptureRequest& req);
+                       const CaptureRequest& req,
+                       const QPixmap& baseCapture = QPixmap(),
+                       const CaptureToolObjects* captureToolObjects = nullptr);
 
 private:
     Flameshot();
