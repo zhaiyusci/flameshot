@@ -121,16 +121,6 @@ OcrResultWidget::OcrResultWidget(const QPixmap& capture,
     setWindowIcon(QIcon(GlobalValues::iconPath()));
     setWindowTitle(tr("OCR Result"));
 
-    const QString& text = result.text;
-    const QString& latex = result.latex;
-    const QString& sourceInfo = result.resultInfo;
-    const QString& fallbackText = result.fallbackText;
-    const QString& fallbackLatex = result.fallbackLatex;
-    const QString& fallbackInfo = result.fallbackInfo;
-    const QString& extraText = result.extraText;
-    const QString& extraLatex = result.extraLatex;
-    const QString& extraInfo = result.extraInfo;
-
     m_editor->setPlainText(result.text);
     m_editor->setLineWrapMode(QPlainTextEdit::WidgetWidth);
 
@@ -163,112 +153,150 @@ OcrResultWidget::OcrResultWidget(const QPixmap& capture,
       !result.fallbackText.isEmpty() || !result.fallbackLatex.isEmpty() ||
       !result.extraText.isEmpty() || !result.extraLatex.isEmpty();
     if (hasAlternatives) {
-        m_editor->deleteLater();
-        m_editor = nullptr;
-        m_previewTimer->deleteLater();
-        m_previewTimer = nullptr;
-        m_preview->deleteLater();
-        m_preview = nullptr;
-
-        resize(capture.isNull() ? QSize(1040, 600) : QSize(1220, 640));
-        m_resultTabs = new QTabWidget(this);
-
-        addMarkdownResultTab(result.resultInfo.isEmpty() ? tr("Primary")
-                                                         : result.resultInfo,
-                             result.text,
-                             result.latex);
-        if (!result.fallbackText.isEmpty() ||
-            !result.fallbackLatex.isEmpty()) {
-            addMarkdownResultTab(result.fallbackInfo.isEmpty()
-                                   ? tr("Fallback")
-                                   : result.fallbackInfo,
-                                 result.fallbackText,
-                                 result.fallbackLatex);
-        }
-        if (!result.extraText.isEmpty() || !result.extraLatex.isEmpty()) {
-            addMarkdownResultTab(result.extraInfo.isEmpty() ? tr("Text OCR")
-                                                            : result.extraInfo,
-                                 result.extraText,
-                                 result.extraLatex);
-        }
-
-        auto* splitter = new QSplitter(Qt::Horizontal, this);
-        if (!capture.isNull()) {
-            splitter->addWidget(originalImagePane(capture, this));
-        }
-        splitter->addWidget(m_resultTabs);
-        splitter->setChildrenCollapsible(false);
-        splitter->setStretchFactor(0, 1);
-        splitter->setStretchFactor(1, 2);
-
-        buttonLayout->addWidget(closeButton);
-        auto* layout = new QVBoxLayout(this);
-        layout->addWidget(splitter);
-        layout->addLayout(buttonLayout);
-
-        connectCopyResultButton(copyButton);
-        connect(closeButton, &QPushButton::clicked, this, &QWidget::close);
-        if (!m_tabEditors.isEmpty()) {
-            m_tabEditors.first()->setFocus();
-            m_tabEditors.first()->selectAll();
-        }
+        setupTabbedResultView(
+          capture, result, buttonLayout, copyButton, closeButton);
         return;
     }
 
-    if (latex.isEmpty()) {
-        resize(capture.isNull() ? QSize(920, 540) : QSize(1180, 620));
-
-        m_editor->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
-        new OcrMarkdownSyntaxHighlighter(m_editor->document());
-
-        auto* splitter = new QSplitter(Qt::Horizontal, this);
-        if (!capture.isNull()) {
-            splitter->addWidget(originalImagePane(capture, this));
-        }
-        const QString markdownTitle = sourceInfo.isEmpty()
-                                        ? tr("Markdown")
-                                        : tr("Markdown (%1)").arg(sourceInfo);
-        splitter->addWidget(labeledPane(markdownTitle, m_editor, this));
-        splitter->addWidget(labeledPane(tr("Preview"), m_preview, this));
-        splitter->setChildrenCollapsible(false);
-        for (int i = 0; i < splitter->count(); ++i) {
-            splitter->setStretchFactor(i, 1);
-        }
-        splitter->setSizes(capture.isNull() ? QList<int>{ 440, 440 }
-                                            : QList<int>{ 360, 360, 360 });
-        QTimer::singleShot(
-          0, splitter, [splitter, hasCapture = !capture.isNull()]() {
-              splitter->setSizes(hasCapture ? QList<int>{ 1, 1, 1 }
-                                            : QList<int>{ 1, 1 });
-          });
-
-        auto* layout = new QVBoxLayout(this);
-        layout->addWidget(splitter);
-        buttonLayout->addWidget(closeButton);
-        layout->addLayout(buttonLayout);
-
-        connect(m_editor, &QPlainTextEdit::textChanged, this, [this]() {
-            schedulePreviewUpdate();
-        });
-        connectCopyResultButton(copyButton);
-        connect(closeButton, &QPushButton::clicked, this, &QWidget::close);
-
-        m_editor->setFocus();
-        m_editor->selectAll();
-        updatePreview();
+    if (result.latex.isEmpty()) {
+        setupMarkdownResultView(
+          capture, result, buttonLayout, copyButton, closeButton);
         return;
     }
 
+    setupLatexResultView(
+      capture, result, buttonLayout, copyButton, closeButton);
+}
+
+OcrResultWidget::~OcrResultWidget()
+{
+    m_destroying = true;
+    if (m_formulaRouteRequestId != 0) {
+        OcrTaskWidget::cancelMarkerOcrRequest(m_formulaRouteRequestId);
+        m_formulaRouteRequestId = 0;
+    }
+}
+
+void OcrResultWidget::setupTabbedResultView(const QPixmap& capture,
+                                            const MarkerOcr::Result& result,
+                                            QHBoxLayout* buttonLayout,
+                                            QPushButton* copyButton,
+                                            QPushButton* closeButton)
+{
+    m_editor->deleteLater();
+    m_editor = nullptr;
+    m_previewTimer->deleteLater();
+    m_previewTimer = nullptr;
+    m_preview->deleteLater();
+    m_preview = nullptr;
+
+    resize(capture.isNull() ? QSize(1040, 600) : QSize(1220, 640));
+    m_resultTabs = new QTabWidget(this);
+
+    addMarkdownResultTab(result.resultInfo.isEmpty() ? tr("Primary")
+                                                     : result.resultInfo,
+                         result.text,
+                         result.latex);
+    if (!result.fallbackText.isEmpty() || !result.fallbackLatex.isEmpty()) {
+        addMarkdownResultTab(result.fallbackInfo.isEmpty() ? tr("Fallback")
+                                                           : result.fallbackInfo,
+                             result.fallbackText,
+                             result.fallbackLatex);
+    }
+    if (!result.extraText.isEmpty() || !result.extraLatex.isEmpty()) {
+        addMarkdownResultTab(result.extraInfo.isEmpty() ? tr("Text OCR")
+                                                        : result.extraInfo,
+                             result.extraText,
+                             result.extraLatex);
+    }
+
+    auto* splitter = new QSplitter(Qt::Horizontal, this);
+    if (!capture.isNull()) {
+        splitter->addWidget(originalImagePane(capture, this));
+    }
+    splitter->addWidget(m_resultTabs);
+    splitter->setChildrenCollapsible(false);
+    splitter->setStretchFactor(0, 1);
+    splitter->setStretchFactor(1, 2);
+
+    buttonLayout->addWidget(closeButton);
+    auto* layout = new QVBoxLayout(this);
+    layout->addWidget(splitter);
+    layout->addLayout(buttonLayout);
+
+    connectCopyResultButton(copyButton);
+    connect(closeButton, &QPushButton::clicked, this, &QWidget::close);
+    if (!m_tabEditors.isEmpty()) {
+        m_tabEditors.first()->setFocus();
+        m_tabEditors.first()->selectAll();
+    }
+}
+
+void OcrResultWidget::setupMarkdownResultView(const QPixmap& capture,
+                                              const MarkerOcr::Result& result,
+                                              QHBoxLayout* buttonLayout,
+                                              QPushButton* copyButton,
+                                              QPushButton* closeButton)
+{
+    resize(capture.isNull() ? QSize(920, 540) : QSize(1180, 620));
+
+    m_editor->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+    new OcrMarkdownSyntaxHighlighter(m_editor->document());
+
+    auto* splitter = new QSplitter(Qt::Horizontal, this);
+    if (!capture.isNull()) {
+        splitter->addWidget(originalImagePane(capture, this));
+    }
+    const QString markdownTitle =
+      result.resultInfo.isEmpty()
+        ? tr("Markdown")
+        : tr("Markdown (%1)").arg(result.resultInfo);
+    splitter->addWidget(labeledPane(markdownTitle, m_editor, this));
+    splitter->addWidget(labeledPane(tr("Preview"), m_preview, this));
+    splitter->setChildrenCollapsible(false);
+    for (int i = 0; i < splitter->count(); ++i) {
+        splitter->setStretchFactor(i, 1);
+    }
+    splitter->setSizes(capture.isNull() ? QList<int>{ 440, 440 }
+                                        : QList<int>{ 360, 360, 360 });
+    QTimer::singleShot(
+      0, splitter, [splitter, hasCapture = !capture.isNull()]() {
+          splitter->setSizes(hasCapture ? QList<int>{ 1, 1, 1 }
+                                        : QList<int>{ 1, 1 });
+      });
+
+    auto* layout = new QVBoxLayout(this);
+    layout->addWidget(splitter);
+    buttonLayout->addWidget(closeButton);
+    layout->addLayout(buttonLayout);
+
+    connect(m_editor, &QPlainTextEdit::textChanged, this, [this]() {
+        schedulePreviewUpdate();
+    });
+    connectCopyResultButton(copyButton);
+    connect(closeButton, &QPushButton::clicked, this, &QWidget::close);
+
+    m_editor->setFocus();
+    m_editor->selectAll();
+    updatePreview();
+}
+
+void OcrResultWidget::setupLatexResultView(const QPixmap& capture,
+                                           const MarkerOcr::Result& result,
+                                           QHBoxLayout* buttonLayout,
+                                           QPushButton* copyButton,
+                                           QPushButton* closeButton)
+{
     resize(1180, 620);
 
     m_latexEditor = new QPlainTextEdit(this);
-    m_latexEditor->setPlainText(latex);
+    m_latexEditor->setPlainText(result.latex);
     m_latexEditor->setLineWrapMode(QPlainTextEdit::WidgetWidth);
     m_latexEditor->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
     new OcrLatexSyntaxHighlighter(m_latexEditor->document());
 
     QWidget* sourcePane = nullptr;
-    if (text.isEmpty()) {
+    if (result.text.isEmpty()) {
         sourcePane = labeledPane(tr("LaTeX"), m_latexEditor, this);
     } else {
         auto* sourceSplitter = new QSplitter(Qt::Vertical, this);
@@ -315,15 +343,6 @@ OcrResultWidget::OcrResultWidget(const QPixmap& capture,
     m_latexEditor->setFocus();
     m_latexEditor->selectAll();
     updatePreview();
-}
-
-OcrResultWidget::~OcrResultWidget()
-{
-    m_destroying = true;
-    if (m_formulaRouteRequestId != 0) {
-        OcrTaskWidget::cancelMarkerOcrRequest(m_formulaRouteRequestId);
-        m_formulaRouteRequestId = 0;
-    }
 }
 
 void OcrResultWidget::addMarkdownResultTab(const QString& title,

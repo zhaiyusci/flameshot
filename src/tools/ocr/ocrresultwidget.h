@@ -9,6 +9,7 @@
 #include <QPixmap>
 #include <QWidget>
 
+class QHBoxLayout;
 class QPlainTextEdit;
 class QPushButton;
 class QTabWidget;
@@ -32,6 +33,21 @@ public:
 
 private:
     QString combinedResult() const;
+    void setupTabbedResultView(const QPixmap& capture,
+                               const MarkerOcr::Result& result,
+                               QHBoxLayout* buttonLayout,
+                               QPushButton* copyButton,
+                               QPushButton* closeButton);
+    void setupMarkdownResultView(const QPixmap& capture,
+                                 const MarkerOcr::Result& result,
+                                 QHBoxLayout* buttonLayout,
+                                 QPushButton* copyButton,
+                                 QPushButton* closeButton);
+    void setupLatexResultView(const QPixmap& capture,
+                              const MarkerOcr::Result& result,
+                              QHBoxLayout* buttonLayout,
+                              QPushButton* copyButton,
+                              QPushButton* closeButton);
     void addMarkdownResultTab(const QString& title,
                               const QString& body,
                               const QString& pageLatex,
