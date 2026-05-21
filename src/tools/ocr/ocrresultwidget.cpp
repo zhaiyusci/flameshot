@@ -66,6 +66,29 @@ QWidget* originalImagePane(const QPixmap& capture, QWidget* parent)
     return labeledPane(QObject::tr("Original"), imageScroll, parent);
 }
 
+#if defined(FLAMESHOT_HAVE_QT_WEBENGINE)
+QWebEngineView* previewWidget(QWidget* parent)
+#else
+QLabel* previewWidget(QWidget* parent)
+#endif
+{
+    auto* preview = new
+#if defined(FLAMESHOT_HAVE_QT_WEBENGINE)
+      QWebEngineView
+#else
+      QLabel
+#endif
+      (parent);
+    preview->setMinimumSize(QSize(240, 240));
+    preview->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+#if !defined(FLAMESHOT_HAVE_QT_WEBENGINE)
+    preview->setAlignment(Qt::AlignCenter);
+    preview->setWordWrap(true);
+    preview->setTextInteractionFlags(Qt::TextSelectableByMouse);
+#endif
+    return preview;
+}
+
 bool canRunMarkerFormulaRoute(const QPixmap& capture, const QString& sourceInfo)
 {
     return !capture.isNull() &&
@@ -130,20 +153,7 @@ OcrResultWidget::OcrResultWidget(const QPixmap& capture,
     m_previewTimer->setSingleShot(true);
     m_previewTimer->setInterval(120);
 
-    m_preview = new
-#if defined(FLAMESHOT_HAVE_QT_WEBENGINE)
-      QWebEngineView
-#else
-      QLabel
-#endif
-      (this);
-    m_preview->setMinimumSize(QSize(240, 240));
-    m_preview->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-#if !defined(FLAMESHOT_HAVE_QT_WEBENGINE)
-    m_preview->setAlignment(Qt::AlignCenter);
-    m_preview->setWordWrap(true);
-    m_preview->setTextInteractionFlags(Qt::TextSelectableByMouse);
-#endif
+    m_preview = previewWidget(this);
 
     connect(
       m_previewTimer, &QTimer::timeout, this, [this]() { updatePreview(); });
@@ -342,20 +352,7 @@ void OcrResultWidget::addMarkdownResultTab(const QString& title,
     editor->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
     new OcrMarkdownSyntaxHighlighter(editor->document());
 
-    auto* preview = new
-#if defined(FLAMESHOT_HAVE_QT_WEBENGINE)
-      QWebEngineView
-#else
-      QLabel
-#endif
-      (page);
-    preview->setMinimumSize(QSize(240, 240));
-    preview->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-#if !defined(FLAMESHOT_HAVE_QT_WEBENGINE)
-    preview->setAlignment(Qt::AlignCenter);
-    preview->setWordWrap(true);
-    preview->setTextInteractionFlags(Qt::TextSelectableByMouse);
-#endif
+    auto* preview = previewWidget(page);
 
     auto* timer = new QTimer(page);
     timer->setSingleShot(true);
