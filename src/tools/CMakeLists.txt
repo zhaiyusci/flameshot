@@ -13,7 +13,10 @@ target_sources(
   flameshot
   PRIVATE ocr/ocrtool.h
           ocr/ocrtool.cpp
+          ocr/markerocrservice.h
+          ocr/markerocrservice.cpp
           ocr/ocrpreprocessor.h
+          ocr/ocrpreprocessor.cpp
           ocr/ocrtaskwidget.h
           ocr/ocrtaskwidget.cpp
           ocr/ocrjobmanagerwidget.h

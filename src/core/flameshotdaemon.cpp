@@ -475,14 +475,10 @@ void FlameshotDaemon::attachOcrTask(const QPixmap& capture,
     m_idleQuitTimer->stop();
     auto taskKind = kind == static_cast<int>(OcrTaskWidget::Kind::Barcode)
                       ? OcrTaskWidget::Kind::Barcode
-                      : (kind == static_cast<int>(OcrTaskWidget::Kind::Latex)
-                           ? OcrTaskWidget::Kind::Latex
-                           : OcrTaskWidget::Kind::Text);
-    const QString taskName =
-      taskKind == OcrTaskWidget::Kind::Barcode
-        ? QStringLiteral("barcode")
-        : (taskKind == OcrTaskWidget::Kind::Latex ? QStringLiteral("latex")
-                                                  : QStringLiteral("ocr"));
+                      : OcrTaskWidget::Kind::Text;
+    const QString taskName = taskKind == OcrTaskWidget::Kind::Barcode
+                               ? QStringLiteral("barcode")
+                               : QStringLiteral("ocr");
     AbstractLogger::info(AbstractLogger::Stderr)
       << tr("Background task received: kind=%1, size=%2x%3.")
            .arg(taskName,

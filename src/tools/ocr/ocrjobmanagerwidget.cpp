@@ -1070,8 +1070,6 @@ QString OcrJobManagerWidget::jobTypeText(const Job& job) const
     switch (job.kind) {
         case OcrTaskWidget::Kind::Barcode:
             return tr("Barcode");
-        case OcrTaskWidget::Kind::Latex:
-            return tr("LaTeX OCR");
         case OcrTaskWidget::Kind::Text:
             return tr("OCR");
     }
