@@ -84,6 +84,28 @@ MarkerOcr::Result trimmedMarkerOcrResult(MarkerOcr::Result result)
     result.error = result.error.trimmed();
     return result;
 }
+
+QString saveCaptureToTemporaryPng(const QPixmap& capture,
+                                  const QString& fileNameTemplate)
+{
+    QTemporaryFile imageFile(QDir::tempPath() + fileNameTemplate);
+    imageFile.setAutoRemove(false);
+    if (!imageFile.open()) {
+        return {};
+    }
+
+    const bool saved = capture.toImage()
+                         .convertToFormat(QImage::Format_RGB32)
+                         .save(&imageFile, "PNG");
+    const QString imagePath =
+      QFileInfo(imageFile.fileName()).absoluteFilePath();
+    imageFile.close();
+    if (!saved) {
+        QFile::remove(imagePath);
+        return {};
+    }
+    return imagePath;
+}
 }
 
 OcrTaskWidget::OcrTaskWidget(Kind kind, const QPixmap& capture, QWidget* parent)
@@ -123,14 +145,9 @@ int OcrTaskWidget::requestMarkerFormulaOcr(const QPixmap& capture,
         return 0;
     }
 
-    QTemporaryFile imageFile(
-      QDir::tempPath() +
-      QStringLiteral("/flameshot-marker-formula-route-XXXXXX.png"));
-    imageFile.setAutoRemove(false);
-    if (!imageFile.open() || !capture.toImage()
-                                .convertToFormat(QImage::Format_RGB32)
-                                .save(&imageFile, "PNG")) {
-        QFile::remove(imageFile.fileName());
+    const QString imagePath = saveCaptureToTemporaryPng(
+      capture, QStringLiteral("/flameshot-marker-formula-route-XXXXXX.png"));
+    if (imagePath.isEmpty()) {
         QTimer::singleShot(0, qApp, [callback = std::move(callback)]() {
             if (callback) {
                 callback(failedMarkerOcrResult(
@@ -140,8 +157,6 @@ int OcrTaskWidget::requestMarkerFormulaOcr(const QPixmap& capture,
         });
         return 0;
     }
-    imageFile.close();
-    const QString imagePath = QFileInfo(imageFile.fileName()).absoluteFilePath();
 
     AbstractLogger::info(AbstractLogger::Stderr)
       << QObject::tr("Marker formula route queued in background: image=%1, "
@@ -232,18 +247,12 @@ void OcrTaskWidget::startMarkerOcr()
 {
     setStatus(tr("Preparing Marker OCR..."));
 
-    QTemporaryFile imageFile(QDir::tempPath() +
-                             QStringLiteral("/flameshot-marker-ocr-XXXXXX.png"));
-    imageFile.setAutoRemove(false);
-    if (!imageFile.open() || !m_capture.toImage()
-                                .convertToFormat(QImage::Format_RGB32)
-                                .save(&imageFile, "PNG")) {
-        QFile::remove(imageFile.fileName());
+    m_imagePath = saveCaptureToTemporaryPng(
+      m_capture, QStringLiteral("/flameshot-marker-ocr-XXXXXX.png"));
+    if (m_imagePath.isEmpty()) {
         failTask(tr("Unable to create a temporary image for OCR."));
         return;
     }
-    imageFile.close();
-    m_imagePath = QFileInfo(imageFile.fileName()).absoluteFilePath();
     emit preparedImageReady(m_imagePath);
 
     AbstractLogger::info(AbstractLogger::Stderr)
