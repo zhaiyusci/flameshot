@@ -11,6 +11,12 @@
 
 #include <functional>
 
+struct OcrTaskResult
+{
+    QPixmap capture;
+    MarkerOcr::Result ocr;
+};
+
 class OcrTaskWidget : public QWidget
 {
     Q_OBJECT
@@ -39,16 +45,7 @@ public:
 signals:
     void statusChanged(const QString& status);
     void preparedImageReady(const QString& imagePath);
-    void ocrCompleted(const QPixmap& capture,
-                      const QString& text,
-                      const QString& latex,
-                      const QString& fallbackText,
-                      const QString& fallbackLatex,
-                      const QString& resultInfo,
-                      const QString& fallbackInfo,
-                      const QString& extraText,
-                      const QString& extraLatex,
-                      const QString& extraInfo);
+    void ocrCompleted(const OcrTaskResult& result);
     void failed(const QString& error);
     void cancelled();
 

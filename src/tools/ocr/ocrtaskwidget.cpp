@@ -373,16 +373,7 @@ void OcrTaskWidget::completeStructuredOcr(const MarkerOcr::Result& result)
                     ocrTextPreview(result.text),
                     latexPreview(result.latex));
     }
-    emit ocrCompleted(m_capture,
-                      result.text,
-                      result.latex,
-                      result.fallbackText,
-                      result.fallbackLatex,
-                      result.resultInfo,
-                      result.fallbackInfo,
-                      result.extraText,
-                      result.extraLatex,
-                      result.extraInfo);
+    emit ocrCompleted(OcrTaskResult{ m_capture, result });
     close();
 }
 
@@ -391,16 +382,10 @@ void OcrTaskWidget::completeBarcodeScan(const QString& result)
     AbstractLogger::info(AbstractLogger::Stderr)
       << tr("Barcode scan succeeded: chars=%1, text=%2")
            .arg(QString::number(result.size()), ocrTextPreview(result));
-    emit ocrCompleted(m_capture,
-                      result,
-                      QString(),
-                      QString(),
-                      QString(),
-                      QString(),
-                      QString(),
-                      QString(),
-                      QString(),
-                      QString());
+    MarkerOcr::Result ocr;
+    ocr.ok = true;
+    ocr.text = result;
+    emit ocrCompleted(OcrTaskResult{ m_capture, ocr });
     close();
 }
 

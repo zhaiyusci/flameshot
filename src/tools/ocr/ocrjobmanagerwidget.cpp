@@ -266,36 +266,28 @@ void OcrJobManagerWidget::addTask(OcrTaskWidget::Kind kind,
       job.task,
       &OcrTaskWidget::ocrCompleted,
       this,
-      [this, jobId](const QPixmap& capture,
-                    const QString& text,
-                    const QString& latex,
-                    const QString& fallbackText,
-                    const QString& fallbackLatex,
-                    const QString& resultInfo,
-                    const QString& fallbackInfo,
-                    const QString& extraText,
-                    const QString& extraLatex,
-                    const QString& extraInfo) {
+      [this, jobId](const OcrTaskResult& result) {
           const int index = jobIndexById(jobId);
           if (index < 0) {
               return;
           }
-          m_jobs[index].capture = capture;
+          const MarkerOcr::Result& ocr = result.ocr;
+          m_jobs[index].capture = result.capture;
           if (m_jobs[index].kind == OcrTaskWidget::Kind::Barcode) {
-              const BarcodeDisplayResult barcode = barcodeDisplayResult(text);
+              const BarcodeDisplayResult barcode = barcodeDisplayResult(ocr.text);
               m_jobs[index].text = barcode.text;
               m_jobs[index].resultInfo = barcode.info;
           } else {
-              m_jobs[index].text = text;
-              m_jobs[index].fallbackText = fallbackText;
-              m_jobs[index].fallbackLatex = fallbackLatex;
-              m_jobs[index].resultInfo = resultInfo;
-              m_jobs[index].fallbackInfo = fallbackInfo;
-              m_jobs[index].extraText = extraText;
-              m_jobs[index].extraLatex = extraLatex;
-              m_jobs[index].extraInfo = extraInfo;
+              m_jobs[index].text = ocr.text;
+              m_jobs[index].fallbackText = ocr.fallbackText;
+              m_jobs[index].fallbackLatex = ocr.fallbackLatex;
+              m_jobs[index].resultInfo = ocr.resultInfo;
+              m_jobs[index].fallbackInfo = ocr.fallbackInfo;
+              m_jobs[index].extraText = ocr.extraText;
+              m_jobs[index].extraLatex = ocr.extraLatex;
+              m_jobs[index].extraInfo = ocr.extraInfo;
           }
-          m_jobs[index].latex = latex;
+          m_jobs[index].latex = ocr.latex;
           m_jobs[index].result = jobResultText(m_jobs.at(index));
           m_jobs[index].status = tr("Finished");
           m_jobs[index].completed = true;
