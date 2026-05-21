@@ -56,6 +56,7 @@
 ## Index
 
 - [Features](#features)
+- [Custom fork changes](#custom-fork-changes)
 - [Usage](#usage)
   - [CLI configuration](#cli-configuration)
   - [Config file](#config-file)
@@ -99,7 +100,51 @@
 - DBus interface.
 - OCR to editable Markdown with formula recognition.
 - Barcode and 2D code recognition.
+- Background task manager for long-running recognition jobs.
+- Pin local images, clipboard images, and clipboard text.
+- Pointer tool for selecting and editing existing annotations.
 - Upload to Imgur.
+
+## Custom fork changes
+
+This fork keeps the upstream Flameshot capture workflow and adds local
+recognition, pinning, and annotation-editing features:
+
+- **OCR and formula recognition:** OCR runs in the daemon as a background task,
+  exits the capture overlay immediately, and opens an editable Markdown result
+  window. The active backend is Marker/Surya only; older PaddleOCR experiments
+  are not used as a runtime fallback. Markdown and formulas are previewed with
+  KaTeX when Qt WebEngine and local KaTeX assets are available. A manual Try
+  Formula Route action can run Marker's forced equation route when the normal
+  Markdown route misses a standalone formula.
+- **Background tasks:** OCR and barcode jobs share a Background Tasks window
+  reachable from the tray menu. It shows job history and previews, can kill the
+  selected job, kill all running jobs, clear completed history, and stop the OCR
+  worker. OCR workers also shut down automatically after an idle timeout.
+- **Barcode and 2D code recognition:** The Barcode tool uses ZXing-C++ and
+  scans all supported readable formats. It tries conservative fallback images
+  such as quiet-zone padding, nearest-neighbor upscaling, contrast stretching,
+  and inversion. A non-GUI helper, `flameshot barcode-scan input.png`, is
+  available for testing.
+- **Pinned image workflows:** The tray menu can pin a local image, pin a
+  clipboard image, or render clipboard text into a pinned image. Large local or
+  clipboard images are fitted to the screen while screenshot pins keep their
+  original size. Pinned local images can open the normal capture tools in-place,
+  with a fixed selection, hatched gray background, and preserved annotations.
+- **Annotation editing:** A pointer tool selects existing annotation objects.
+  Two-point tools such as arrows can be moved or adjusted by their control
+  points. Text objects can be double-clicked for content editing; while editing,
+  text objects cannot be dragged, clicking outside commits the edit, and the
+  default text size is 16 pt with the side-panel control showing the real point
+  size.
+- **Panel and pin fixes:** The fork fixes pin geometry for captures that include
+  KDE Plasma panels and preserves editable annotation positions and sizes when
+  reopening pinned images with the tools overlay.
+- **Packaging notes:** The AppImage workflow bundles Flameshot, Qt, Qt
+  WebEngine, plugins, translations, and KaTeX assets. It intentionally does not
+  bundle Marker/Surya or OCR model files; installed builds should point to a
+  system or user Marker environment through `PATH`, `flameshot.ini`, or the
+  documented environment variables.
 
 ## Usage
 
