@@ -47,16 +47,7 @@ private:
         OcrTaskWidget::Kind kind = OcrTaskWidget::Kind::Text;
         QPixmap capture;
         QString status;
-        QString result;
-        QString text;
-        QString latex;
-        QString fallbackText;
-        QString fallbackLatex;
-        QString resultInfo;
-        QString fallbackInfo;
-        QString extraText;
-        QString extraLatex;
-        QString extraInfo;
+        MarkerOcr::Result ocr;
         QString error;
         QString requestId;
         QString preparedImagePath;

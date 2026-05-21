@@ -271,24 +271,14 @@ void OcrJobManagerWidget::addTask(OcrTaskWidget::Kind kind,
           if (index < 0) {
               return;
           }
-          const MarkerOcr::Result& ocr = result.ocr;
+          MarkerOcr::Result ocr = result.ocr;
           m_jobs[index].capture = result.capture;
           if (m_jobs[index].kind == OcrTaskWidget::Kind::Barcode) {
               const BarcodeDisplayResult barcode = barcodeDisplayResult(ocr.text);
-              m_jobs[index].text = barcode.text;
-              m_jobs[index].resultInfo = barcode.info;
-          } else {
-              m_jobs[index].text = ocr.text;
-              m_jobs[index].fallbackText = ocr.fallbackText;
-              m_jobs[index].fallbackLatex = ocr.fallbackLatex;
-              m_jobs[index].resultInfo = ocr.resultInfo;
-              m_jobs[index].fallbackInfo = ocr.fallbackInfo;
-              m_jobs[index].extraText = ocr.extraText;
-              m_jobs[index].extraLatex = ocr.extraLatex;
-              m_jobs[index].extraInfo = ocr.extraInfo;
+              ocr.text = barcode.text;
+              ocr.resultInfo = barcode.info;
           }
-          m_jobs[index].latex = ocr.latex;
-          m_jobs[index].result = jobResultText(m_jobs.at(index));
+          m_jobs[index].ocr = ocr;
           m_jobs[index].status = tr("Finished");
           m_jobs[index].completed = true;
           m_jobs[index].task = nullptr;
@@ -466,7 +456,7 @@ void OcrJobManagerWidget::updateButtons()
 void OcrJobManagerWidget::updateLatexPreview(const Job& job)
 {
     const QString result = jobResultText(job);
-    if (job.latex.isEmpty() && result.isEmpty()) {
+    if (job.ocr.latex.isEmpty() && result.isEmpty()) {
         clearLatexPreview();
         return;
     }
@@ -479,11 +469,11 @@ void OcrJobManagerWidget::updateLatexPreview(const Job& job)
         return;
     }
     m_latexPreview->setHtml(
-      job.latex.isEmpty()
+      job.ocr.latex.isEmpty()
         ? OcrPreviewRenderer::markdownHtml(
             result, OcrPreviewRenderer::Density::Compact)
         : OcrPreviewRenderer::katexHtml(
-            job.latex, OcrPreviewRenderer::Density::Compact),
+            job.ocr.latex, OcrPreviewRenderer::Density::Compact),
       QUrl::fromLocalFile(m_katexDist + QDir::separator()));
 #else
     setLatexPreviewMessage(
@@ -508,38 +498,40 @@ void OcrJobManagerWidget::setLatexPreviewMessage(const QString& message)
 
 QString OcrJobManagerWidget::jobResultText(const Job& job) const
 {
-    if (!job.text.isEmpty() && !job.latex.isEmpty()) {
-        return QStringLiteral("%1\n\nLaTeX:\n%2").arg(job.text, job.latex);
+    const MarkerOcr::Result& ocr = job.ocr;
+    if (!ocr.text.isEmpty() && !ocr.latex.isEmpty()) {
+        return QStringLiteral("%1\n\nLaTeX:\n%2").arg(ocr.text, ocr.latex);
     }
-    if (!job.text.isEmpty()) {
-        return job.text;
+    if (!ocr.text.isEmpty()) {
+        return ocr.text;
     }
-    if (!job.latex.isEmpty()) {
-        return job.latex;
+    if (!ocr.latex.isEmpty()) {
+        return ocr.latex;
     }
-    return job.result;
+    return {};
 }
 
 QString OcrJobManagerWidget::jobFallbackText(const Job& job) const
 {
-    if (!job.fallbackText.isEmpty() && !job.fallbackLatex.isEmpty()) {
+    const MarkerOcr::Result& ocr = job.ocr;
+    if (!ocr.fallbackText.isEmpty() && !ocr.fallbackLatex.isEmpty()) {
         return QStringLiteral("%1\n\nLaTeX:\n%2")
-          .arg(job.fallbackText, job.fallbackLatex);
+          .arg(ocr.fallbackText, ocr.fallbackLatex);
     }
-    if (!job.fallbackText.isEmpty()) {
-        return job.fallbackText;
+    if (!ocr.fallbackText.isEmpty()) {
+        return ocr.fallbackText;
     }
-    return job.fallbackLatex;
+    return ocr.fallbackLatex;
 }
 
 QString OcrJobManagerWidget::resultPaneTitle(const Job& job) const
 {
     const QString title =
       job.kind == OcrTaskWidget::Kind::Text ? tr("Markdown") : tr("Result");
-    if (job.resultInfo.isEmpty()) {
+    if (job.ocr.resultInfo.isEmpty()) {
         return title;
     }
-    return tr("%1 (%2)").arg(title, job.resultInfo);
+    return tr("%1 (%2)").arg(title, job.ocr.resultInfo);
 }
 
 int OcrJobManagerWidget::selectedJobIndex() const
@@ -584,22 +576,22 @@ void OcrJobManagerWidget::openJobResult(int index)
     if (index < 0 || index >= m_jobs.size() ||
         (jobResultText(m_jobs.at(index)).isEmpty() &&
          jobFallbackText(m_jobs.at(index)).isEmpty() &&
-         m_jobs.at(index).extraText.isEmpty() &&
-         m_jobs.at(index).extraLatex.isEmpty())) {
+         m_jobs.at(index).ocr.extraText.isEmpty() &&
+         m_jobs.at(index).ocr.extraLatex.isEmpty())) {
         return;
     }
 
     const Job& job = m_jobs.at(index);
     auto* result = new OcrResultWidget(job.capture,
-                                       job.text,
-                                       job.latex,
-                                       job.resultInfo,
-                                       job.fallbackText,
-                                       job.fallbackLatex,
-                                       job.fallbackInfo,
-                                       job.extraText,
-                                       job.extraLatex,
-                                       job.extraInfo);
+                                       job.ocr.text,
+                                       job.ocr.latex,
+                                       job.ocr.resultInfo,
+                                       job.ocr.fallbackText,
+                                       job.ocr.fallbackLatex,
+                                       job.ocr.fallbackInfo,
+                                       job.ocr.extraText,
+                                       job.ocr.extraLatex,
+                                       job.ocr.extraInfo);
     if (job.kind == OcrTaskWidget::Kind::Barcode) {
         result->setWindowTitle(tr("Barcode Result"));
     }
