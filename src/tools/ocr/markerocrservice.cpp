@@ -206,6 +206,11 @@ QString markerOcrRouteWorkerPythonScript()
     return resourceText(QStringLiteral(":/scripts/marker_ocr_route_worker.py"));
 }
 
+QString markerOcrCommonPythonScript()
+{
+    return resourceText(QStringLiteral(":/scripts/marker_ocr_common.py"));
+}
+
 QProcessEnvironment ocrProcessEnvironment()
 {
     QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
@@ -460,7 +465,9 @@ private:
         }
         const QString workerScript = markerOcrServicePythonScript();
         const QString routeWorkerScript = markerOcrRouteWorkerPythonScript();
-        if (workerScript.isEmpty() || routeWorkerScript.isEmpty()) {
+        const QString commonWorkerScript = markerOcrCommonPythonScript();
+        if (workerScript.isEmpty() || routeWorkerScript.isEmpty() ||
+            commonWorkerScript.isEmpty()) {
             failPending(QObject::tr("Marker OCR worker script is missing."));
             return;
         }
@@ -500,7 +507,8 @@ private:
                          { QStringLiteral("-u"),
                            QStringLiteral("-c"),
                            workerScript,
-                           routeWorkerScript });
+                           routeWorkerScript,
+                           commonWorkerScript });
     }
 
     void startNextRequest()

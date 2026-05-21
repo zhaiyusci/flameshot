@@ -4,7 +4,6 @@
 
 import json
 import os
-import re
 import sys
 import threading
 import time
@@ -19,6 +18,10 @@ def log(message):
 
 def send(payload):
     print(json.dumps(payload, ensure_ascii=False), flush=True)
+
+COMMON_SCRIPT = sys.argv[1] if len(sys.argv) > 1 else ""
+if not COMMON_SCRIPT:
+    raise RuntimeError("marker OCR common worker script is unavailable")
 
 def start_parent_monitor():
     try:
@@ -41,46 +44,6 @@ def start_parent_monitor():
     threading.Thread(target=monitor, daemon=True).start()
 
 start_parent_monitor()
-
-def result_page(label, text="", latex="", score=0.0, error=""):
-    return {
-        "label": label,
-        "text": str(text or "").strip(),
-        "latex": str(latex or "").strip(),
-        "score": float(score or 0.0),
-        "error": str(error or "").strip(),
-    }
-
-def error_page(label, error):
-    return result_page(label, text=label + " failed:\n" + str(error), score=0.0, error=str(error))
-
-def math_marker_count(text):
-    text = str(text or "")
-    return len(
-        re.findall(
-            r"\$\$[\s\S]+?\$\$|\\\[[\s\S]+?\\\]|\\\([\s\S]+?\\\)|"
-            r"(?<!\$)\$[^$\n]{1,500}\$(?!\$)",
-            text,
-        )
-    )
-
-def has_markdown_table(text):
-    text = str(text or "")
-    return bool(re.search(r"^\|.*\|\s*$\n^\|[-:\s|]+\|\s*$", text, re.M))
-
-def score_markdown(text, label):
-    text = str(text or "").strip()
-    if not text:
-        return 0.0
-    score = min(1.0, len(text) / 80.0)
-    markers = math_marker_count(text)
-    if markers:
-        score += 0.4
-    if has_markdown_table(text):
-        score -= 0.7
-    if label == "Marker Formula" and markers:
-        score += 0.3
-    return max(0.0, score)
 
 try:
     import torch
@@ -105,36 +68,8 @@ RENDERER = "marker.renderers.markdown.MarkdownRenderer"
 log("load models begin")
 MODELS = create_model_dict()
 log("load models done")
+exec(COMMON_SCRIPT, globals())
 send({"type": "ready"})
-
-def convert_marker(image_path, label, force_layout_block=None):
-    config = {
-        "pdftext_workers": 1,
-        "disable_tqdm": True,
-        "extract_images": False,
-    }
-    if force_layout_block:
-        config["force_layout_block"] = force_layout_block
-    converter = PdfConverter(
-        config=config,
-        artifact_dict=MODELS.copy(),
-        renderer=RENDERER,
-    )
-    start = time.time()
-    rendered = converter(image_path)
-    markdown, _, _ = text_from_rendered(rendered)
-    elapsed = time.time() - start
-    markdown = str(markdown or "").strip()
-    log(label + " done: seconds=%.2f, chars=%d, math=%d" % (
-        elapsed,
-        len(markdown),
-        math_marker_count(markdown),
-    ))
-    return result_page(
-        label,
-        text=markdown,
-        score=score_markdown(markdown, label),
-    )
 
 for line in sys.stdin:
     line = line.strip()
