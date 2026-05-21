@@ -304,13 +304,6 @@ QProcessEnvironment markerOcrProcessEnvironment()
     return environment;
 }
 
-MarkerOcr::Result failedMarkerOcrResult(const QString& error)
-{
-    MarkerOcr::Result result;
-    result.error = error;
-    return result;
-}
-
 MarkerOcr::Result markerOcrResultFromJson(const QJsonObject& object)
 {
     MarkerOcr::Result result;
@@ -383,7 +376,7 @@ public:
             }
             const Request request = m_queue.takeAt(i);
             if (request.callback) {
-                request.callback(failedMarkerOcrResult(
+                request.callback(MarkerOcr::failedResult(
                   QObject::tr("Marker OCR task cancelled")));
             }
             return;
@@ -393,7 +386,7 @@ public:
             const Callback callback = m_current.callback;
             m_current = {};
             if (callback) {
-                callback(failedMarkerOcrResult(
+                callback(MarkerOcr::failedResult(
                   QObject::tr("Marker OCR task cancelled")));
             }
             stopProcess();
@@ -408,13 +401,13 @@ public:
     {
         for (const Request& request : m_queue) {
             if (request.callback) {
-                request.callback(failedMarkerOcrResult(
+                request.callback(MarkerOcr::failedResult(
                   QObject::tr("Marker OCR worker was stopped")));
             }
         }
         m_queue.clear();
         if (m_current.id != 0 && m_current.callback) {
-            m_current.callback(failedMarkerOcrResult(
+            m_current.callback(MarkerOcr::failedResult(
               QObject::tr("Marker OCR worker was stopped")));
         }
         m_current = {};
@@ -633,7 +626,7 @@ private:
             const Callback callback = m_current.callback;
             m_current = {};
             if (callback) {
-                callback(failedMarkerOcrResult(
+                callback(MarkerOcr::failedResult(
                   QObject::tr("Marker OCR worker exited unexpectedly")));
             }
         }
@@ -647,12 +640,12 @@ private:
     {
         for (const Request& request : m_queue) {
             if (request.callback) {
-                request.callback(failedMarkerOcrResult(error));
+                request.callback(MarkerOcr::failedResult(error));
             }
         }
         m_queue.clear();
         if (m_current.id != 0 && m_current.callback) {
-            m_current.callback(failedMarkerOcrResult(error));
+            m_current.callback(MarkerOcr::failedResult(error));
         }
         m_current = {};
     }

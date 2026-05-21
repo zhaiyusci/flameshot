@@ -23,6 +23,13 @@ struct Result
     QString error;
 };
 
+inline Result failedResult(const QString& error)
+{
+    Result result;
+    result.error = error;
+    return result;
+}
+
 using Callback = std::function<void(const Result&)>;
 
 int timeoutMs();

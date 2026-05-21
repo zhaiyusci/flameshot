@@ -63,13 +63,6 @@ QString ocrTextPreview(const QString& text)
     return preview;
 }
 
-MarkerOcr::Result failedMarkerOcrResult(const QString& error)
-{
-    MarkerOcr::Result result;
-    result.error = error;
-    return result;
-}
-
 MarkerOcr::Result trimmedMarkerOcrResult(MarkerOcr::Result result)
 {
     result.text = result.text.trimmed();
@@ -138,7 +131,7 @@ int OcrTaskWidget::requestMarkerFormulaOcr(const QPixmap& capture,
     if (capture.isNull()) {
         QTimer::singleShot(0, qApp, [callback = std::move(callback)]() {
             if (callback) {
-                callback(failedMarkerOcrResult(
+                callback(MarkerOcr::failedResult(
                   QObject::tr("Unable to prepare image.")));
             }
         });
@@ -150,7 +143,7 @@ int OcrTaskWidget::requestMarkerFormulaOcr(const QPixmap& capture,
     if (imagePath.isEmpty()) {
         QTimer::singleShot(0, qApp, [callback = std::move(callback)]() {
             if (callback) {
-                callback(failedMarkerOcrResult(
+                callback(MarkerOcr::failedResult(
                   QObject::tr("Unable to create a temporary image for formula "
                               "OCR.")));
             }
