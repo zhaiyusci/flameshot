@@ -73,9 +73,6 @@ private:
     void updateLatexPreview(const Job& job);
     void clearLatexPreview();
     void setLatexPreviewMessage(const QString& message);
-    QString katexHtml(const QString& latex) const;
-    QString markdownHtml(const QString& markdown) const;
-    QString findKatexDist() const;
     QString jobResultText(const Job& job) const;
     QString jobFallbackText(const Job& job) const;
     QString resultPaneTitle(const Job& job) const;

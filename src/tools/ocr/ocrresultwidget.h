@@ -51,9 +51,6 @@ private:
     void schedulePreviewUpdate();
     void updatePreview();
     void setPreviewMessage(const QString& message);
-    QString katexHtml(const QString& latex) const;
-    QString markdownHtml(const QString& markdown) const;
-    QString findKatexDist() const;
 
     QPlainTextEdit* m_editor;
     QPlainTextEdit* m_latexEditor = nullptr;

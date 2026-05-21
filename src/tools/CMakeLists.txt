@@ -17,6 +17,10 @@ target_sources(
           ocr/markerocrservice.cpp
           ocr/ocrpreprocessor.h
           ocr/ocrpreprocessor.cpp
+          ocr/ocrpreviewrenderer.h
+          ocr/ocrpreviewrenderer.cpp
+          ocr/ocrsyntaxhighlighter.h
+          ocr/ocrsyntaxhighlighter.cpp
           ocr/ocrtaskwidget.h
           ocr/ocrtaskwidget.cpp
           ocr/ocrjobmanagerwidget.h
