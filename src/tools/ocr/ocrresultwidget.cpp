@@ -16,6 +16,7 @@
 #include <QHBoxLayout>
 #include <QIcon>
 #include <QLabel>
+#include <QObject>
 #include <QPlainTextEdit>
 #include <QPointer>
 #include <QPushButton>
@@ -48,6 +49,21 @@ QWidget* labeledPane(const QString& title, QWidget* content, QWidget* parent)
     layout->addWidget(titleLabel);
     layout->addWidget(content, 1);
     return pane;
+}
+
+QWidget* originalImagePane(const QPixmap& capture, QWidget* parent)
+{
+    auto* imageLabel = new QLabel(parent);
+    imageLabel->setAlignment(Qt::AlignCenter);
+    imageLabel->setPixmap(capture);
+
+    auto* imageScroll = new QScrollArea(parent);
+    imageScroll->setWidget(imageLabel);
+    imageScroll->setWidgetResizable(true);
+    imageScroll->setMinimumWidth(240);
+    imageScroll->setSizePolicy(QSizePolicy::Expanding,
+                               QSizePolicy::Expanding);
+    return labeledPane(QObject::tr("Original"), imageScroll, parent);
 }
 
 bool canRunMarkerFormulaRoute(const QPixmap& capture, const QString& sourceInfo)
@@ -168,17 +184,7 @@ OcrResultWidget::OcrResultWidget(const QPixmap& capture,
 
         auto* splitter = new QSplitter(Qt::Horizontal, this);
         if (!capture.isNull()) {
-            auto* imageLabel = new QLabel(this);
-            imageLabel->setAlignment(Qt::AlignCenter);
-            imageLabel->setPixmap(capture);
-
-            auto* imageScroll = new QScrollArea(this);
-            imageScroll->setWidget(imageLabel);
-            imageScroll->setWidgetResizable(true);
-            imageScroll->setMinimumWidth(240);
-            imageScroll->setSizePolicy(QSizePolicy::Expanding,
-                                       QSizePolicy::Expanding);
-            splitter->addWidget(labeledPane(tr("Original"), imageScroll, this));
+            splitter->addWidget(originalImagePane(capture, this));
         }
         splitter->addWidget(m_resultTabs);
         splitter->setChildrenCollapsible(false);
@@ -190,11 +196,7 @@ OcrResultWidget::OcrResultWidget(const QPixmap& capture,
         layout->addWidget(splitter);
         layout->addLayout(buttonLayout);
 
-        connect(copyButton, &QPushButton::clicked, this, [this]() {
-            FlameshotDaemon::copyToClipboard(combinedResult());
-            AbstractLogger::info(AbstractLogger::Stderr)
-              << tr("OCR result copied to clipboard.");
-        });
+        connectCopyResultButton(copyButton);
         connect(closeButton, &QPushButton::clicked, this, &QWidget::close);
         if (!m_tabEditors.isEmpty()) {
             m_tabEditors.first()->setFocus();
@@ -211,17 +213,7 @@ OcrResultWidget::OcrResultWidget(const QPixmap& capture,
 
         auto* splitter = new QSplitter(Qt::Horizontal, this);
         if (!capture.isNull()) {
-            auto* imageLabel = new QLabel(this);
-            imageLabel->setAlignment(Qt::AlignCenter);
-            imageLabel->setPixmap(capture);
-
-            auto* imageScroll = new QScrollArea(this);
-            imageScroll->setWidget(imageLabel);
-            imageScroll->setWidgetResizable(true);
-            imageScroll->setMinimumWidth(240);
-            imageScroll->setSizePolicy(QSizePolicy::Expanding,
-                                       QSizePolicy::Expanding);
-            splitter->addWidget(labeledPane(tr("Original"), imageScroll, this));
+            splitter->addWidget(originalImagePane(capture, this));
         }
         const QString markdownTitle = sourceInfo.isEmpty()
                                         ? tr("Markdown")
@@ -248,11 +240,7 @@ OcrResultWidget::OcrResultWidget(const QPixmap& capture,
         connect(m_editor, &QPlainTextEdit::textChanged, this, [this]() {
             schedulePreviewUpdate();
         });
-        connect(copyButton, &QPushButton::clicked, this, [this]() {
-            FlameshotDaemon::copyToClipboard(combinedResult());
-            AbstractLogger::info(AbstractLogger::Stderr)
-              << tr("OCR result copied to clipboard.");
-        });
+        connectCopyResultButton(copyButton);
         connect(closeButton, &QPushButton::clicked, this, &QWidget::close);
 
         m_editor->setFocus();
@@ -262,16 +250,6 @@ OcrResultWidget::OcrResultWidget(const QPixmap& capture,
     }
 
     resize(1180, 620);
-
-    auto* imageLabel = new QLabel(this);
-    imageLabel->setAlignment(Qt::AlignCenter);
-    imageLabel->setPixmap(capture);
-
-    auto* imageScroll = new QScrollArea(this);
-    imageScroll->setWidget(imageLabel);
-    imageScroll->setWidgetResizable(true);
-    imageScroll->setMinimumWidth(240);
-    imageScroll->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 
     m_latexEditor = new QPlainTextEdit(this);
     m_latexEditor->setPlainText(latex);
@@ -294,7 +272,7 @@ OcrResultWidget::OcrResultWidget(const QPixmap& capture,
     }
 
     auto* splitter = new QSplitter(Qt::Horizontal, this);
-    splitter->addWidget(labeledPane(tr("Original"), imageScroll, this));
+    splitter->addWidget(originalImagePane(capture, this));
     splitter->addWidget(sourcePane);
     splitter->addWidget(labeledPane(tr("Preview"), m_preview, this));
     splitter->setChildrenCollapsible(false);
@@ -316,11 +294,7 @@ OcrResultWidget::OcrResultWidget(const QPixmap& capture,
     connect(m_latexEditor, &QPlainTextEdit::textChanged, this, [this]() {
         schedulePreviewUpdate();
     });
-    connect(copyButton, &QPushButton::clicked, this, [this]() {
-        FlameshotDaemon::copyToClipboard(combinedResult());
-        AbstractLogger::info(AbstractLogger::Stderr)
-          << tr("OCR result copied to clipboard.");
-    });
+    connectCopyResultButton(copyButton);
     connect(copyLatexButton, &QPushButton::clicked, this, [this]() {
         FlameshotDaemon::copyToClipboard(m_latexEditor->toPlainText());
         AbstractLogger::info(AbstractLogger::Stderr)
@@ -489,6 +463,15 @@ void OcrResultWidget::finishFormulaRouteRequest(
                               ? tr("Marker formula route produced no result.")
                               : result.error;
     addMarkdownResultTab(tr("Formula Route Failed"), message, QString(), true);
+}
+
+void OcrResultWidget::connectCopyResultButton(QPushButton* copyButton)
+{
+    connect(copyButton, &QPushButton::clicked, this, [this]() {
+        FlameshotDaemon::copyToClipboard(combinedResult());
+        AbstractLogger::info(AbstractLogger::Stderr)
+          << tr("OCR result copied to clipboard.");
+    });
 }
 
 QString OcrResultWidget::combinedResult() const

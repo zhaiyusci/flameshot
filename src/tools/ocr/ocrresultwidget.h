@@ -38,6 +38,7 @@ private:
                               bool selectTab = false);
     void startFormulaRouteRequest();
     void finishFormulaRouteRequest(const MarkerOcr::Result& result);
+    void connectCopyResultButton(QPushButton* copyButton);
     void schedulePreviewUpdate();
     void updatePreview();
     void setPreviewMessage(const QString& message);
