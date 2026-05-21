@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include "tools/ocr/markerocrservice.h"
+
 #include <QList>
 #include <QPixmap>
 #include <QWidget>
@@ -24,15 +26,7 @@ class OcrResultWidget : public QWidget
 public:
     explicit OcrResultWidget(const QString& text, QWidget* parent = nullptr);
     OcrResultWidget(const QPixmap& capture,
-                    const QString& text,
-                    const QString& latex,
-                    const QString& sourceInfo = QString(),
-                    const QString& fallbackText = QString(),
-                    const QString& fallbackLatex = QString(),
-                    const QString& fallbackInfo = QString(),
-                    const QString& extraText = QString(),
-                    const QString& extraLatex = QString(),
-                    const QString& extraInfo = QString(),
+                    const MarkerOcr::Result& result,
                     QWidget* parent = nullptr);
     ~OcrResultWidget() override;
 
@@ -43,11 +37,7 @@ private:
                               const QString& pageLatex,
                               bool selectTab = false);
     void startFormulaRouteRequest();
-    void finishFormulaRouteRequest(bool ok,
-                                   const QString& text,
-                                   const QString& latex,
-                                   const QString& info,
-                                   const QString& error);
+    void finishFormulaRouteRequest(const MarkerOcr::Result& result);
     void schedulePreviewUpdate();
     void updatePreview();
     void setPreviewMessage(const QString& message);

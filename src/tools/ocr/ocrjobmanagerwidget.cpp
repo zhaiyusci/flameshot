@@ -582,16 +582,7 @@ void OcrJobManagerWidget::openJobResult(int index)
     }
 
     const Job& job = m_jobs.at(index);
-    auto* result = new OcrResultWidget(job.capture,
-                                       job.ocr.text,
-                                       job.ocr.latex,
-                                       job.ocr.resultInfo,
-                                       job.ocr.fallbackText,
-                                       job.ocr.fallbackLatex,
-                                       job.ocr.fallbackInfo,
-                                       job.ocr.extraText,
-                                       job.ocr.extraLatex,
-                                       job.ocr.extraInfo);
+    auto* result = new OcrResultWidget(job.capture, job.ocr);
     if (job.kind == OcrTaskWidget::Kind::Barcode) {
         result->setWindowTitle(tr("Barcode Result"));
     }

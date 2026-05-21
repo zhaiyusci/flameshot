@@ -56,32 +56,22 @@ bool canRunMarkerFormulaRoute(const QPixmap& capture, const QString& sourceInfo)
            sourceInfo.compare(QStringLiteral("Marker Markdown"),
                               Qt::CaseInsensitive) == 0;
 }
+
+MarkerOcr::Result plainTextResult(const QString& text)
+{
+    MarkerOcr::Result result;
+    result.ok = !text.isEmpty();
+    result.text = text;
+    return result;
+}
 }
 
 OcrResultWidget::OcrResultWidget(const QString& text, QWidget* parent)
-  : OcrResultWidget(QPixmap(),
-                    text,
-                    QString(),
-                    QString(),
-                    QString(),
-                    QString(),
-                    QString(),
-                    QString(),
-                    QString(),
-                    QString(),
-                    parent)
+  : OcrResultWidget(QPixmap(), plainTextResult(text), parent)
 {}
 
 OcrResultWidget::OcrResultWidget(const QPixmap& capture,
-                                 const QString& text,
-                                 const QString& latex,
-                                 const QString& sourceInfo,
-                                 const QString& fallbackText,
-                                 const QString& fallbackLatex,
-                                 const QString& fallbackInfo,
-                                 const QString& extraText,
-                                 const QString& extraLatex,
-                                 const QString& extraInfo,
+                                 const MarkerOcr::Result& result,
                                  QWidget* parent)
   : QWidget(parent)
   , m_editor(new QPlainTextEdit(this))
@@ -92,7 +82,17 @@ OcrResultWidget::OcrResultWidget(const QPixmap& capture,
     setWindowIcon(QIcon(GlobalValues::iconPath()));
     setWindowTitle(tr("OCR Result"));
 
-    m_editor->setPlainText(text);
+    const QString& text = result.text;
+    const QString& latex = result.latex;
+    const QString& sourceInfo = result.resultInfo;
+    const QString& fallbackText = result.fallbackText;
+    const QString& fallbackLatex = result.fallbackLatex;
+    const QString& fallbackInfo = result.fallbackInfo;
+    const QString& extraText = result.extraText;
+    const QString& extraLatex = result.extraLatex;
+    const QString& extraInfo = result.extraInfo;
+
+    m_editor->setPlainText(result.text);
     m_editor->setLineWrapMode(QPlainTextEdit::WidgetWidth);
 
     auto* copyButton = new QPushButton(tr("Copy Result"), this);
@@ -100,7 +100,7 @@ OcrResultWidget::OcrResultWidget(const QPixmap& capture,
 
     auto* buttonLayout = new QHBoxLayout;
     buttonLayout->addStretch();
-    if (canRunMarkerFormulaRoute(capture, sourceInfo)) {
+    if (canRunMarkerFormulaRoute(capture, result.resultInfo)) {
         m_formulaRouteButton = new QPushButton(tr("Try Formula Route"), this);
         buttonLayout->addWidget(m_formulaRouteButton);
         connect(m_formulaRouteButton,
@@ -132,11 +132,10 @@ OcrResultWidget::OcrResultWidget(const QPixmap& capture,
     connect(
       m_previewTimer, &QTimer::timeout, this, [this]() { updatePreview(); });
 
-    const bool hasAlternatives = canRunMarkerFormulaRoute(capture, sourceInfo) ||
-                                 !fallbackText.isEmpty() ||
-                                 !fallbackLatex.isEmpty() ||
-                                 !extraText.isEmpty() ||
-                                 !extraLatex.isEmpty();
+    const bool hasAlternatives =
+      canRunMarkerFormulaRoute(capture, result.resultInfo) ||
+      !result.fallbackText.isEmpty() || !result.fallbackLatex.isEmpty() ||
+      !result.extraText.isEmpty() || !result.extraLatex.isEmpty();
     if (hasAlternatives) {
         m_editor->deleteLater();
         m_editor = nullptr;
@@ -148,20 +147,23 @@ OcrResultWidget::OcrResultWidget(const QPixmap& capture,
         resize(capture.isNull() ? QSize(1040, 600) : QSize(1220, 640));
         m_resultTabs = new QTabWidget(this);
 
-        addMarkdownResultTab(sourceInfo.isEmpty() ? tr("Primary") : sourceInfo,
-                             text,
-                             latex);
-        if (!fallbackText.isEmpty() || !fallbackLatex.isEmpty()) {
-            addMarkdownResultTab(fallbackInfo.isEmpty() ? tr("Fallback")
-                                                        : fallbackInfo,
-                                 fallbackText,
-                                 fallbackLatex);
+        addMarkdownResultTab(result.resultInfo.isEmpty() ? tr("Primary")
+                                                         : result.resultInfo,
+                             result.text,
+                             result.latex);
+        if (!result.fallbackText.isEmpty() ||
+            !result.fallbackLatex.isEmpty()) {
+            addMarkdownResultTab(result.fallbackInfo.isEmpty()
+                                   ? tr("Fallback")
+                                   : result.fallbackInfo,
+                                 result.fallbackText,
+                                 result.fallbackLatex);
         }
-        if (!extraText.isEmpty() || !extraLatex.isEmpty()) {
-            addMarkdownResultTab(extraInfo.isEmpty() ? tr("Text OCR")
-                                                     : extraInfo,
-                                 extraText,
-                                 extraLatex);
+        if (!result.extraText.isEmpty() || !result.extraLatex.isEmpty()) {
+            addMarkdownResultTab(result.extraInfo.isEmpty() ? tr("Text OCR")
+                                                            : result.extraInfo,
+                                 result.extraText,
+                                 result.extraLatex);
         }
 
         auto* splitter = new QSplitter(Qt::Horizontal, this);
@@ -455,20 +457,13 @@ void OcrResultWidget::startFormulaRouteRequest()
       m_capture,
       [guard](const MarkerOcr::Result& result) {
           if (guard) {
-              guard->finishFormulaRouteRequest(result.ok,
-                                               result.text,
-                                               result.latex,
-                                               result.resultInfo,
-                                               result.error);
+              guard->finishFormulaRouteRequest(result);
           }
       });
 }
 
-void OcrResultWidget::finishFormulaRouteRequest(bool ok,
-                                                const QString& text,
-                                                const QString& latex,
-                                                const QString& info,
-                                                const QString& error)
+void OcrResultWidget::finishFormulaRouteRequest(
+  const MarkerOcr::Result& result)
 {
     if (m_destroying) {
         return;
@@ -480,14 +475,19 @@ void OcrResultWidget::finishFormulaRouteRequest(bool ok,
         m_formulaRouteButton->setEnabled(true);
     }
 
-    const QString title = info.isEmpty() ? tr("Marker Formula") : info;
-    if (ok && (!text.trimmed().isEmpty() || !latex.trimmed().isEmpty())) {
-        addMarkdownResultTab(title, text.trimmed(), latex.trimmed(), true);
+    const QString title =
+      result.resultInfo.isEmpty() ? tr("Marker Formula") : result.resultInfo;
+    if (result.ok &&
+        (!result.text.trimmed().isEmpty() ||
+         !result.latex.trimmed().isEmpty())) {
+        addMarkdownResultTab(
+          title, result.text.trimmed(), result.latex.trimmed(), true);
         return;
     }
 
-    const QString message =
-      error.isEmpty() ? tr("Marker formula route produced no result.") : error;
+    const QString message = result.error.isEmpty()
+                              ? tr("Marker formula route produced no result.")
+                              : result.error;
     addMarkdownResultTab(tr("Formula Route Failed"), message, QString(), true);
 }
 
