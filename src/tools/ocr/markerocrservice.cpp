@@ -187,13 +187,23 @@ QString markerOcrCacheHome()
       QStringLiteral(".cache/flameshot/datalab/models"));
 }
 
-QString markerOcrServicePythonScript()
+QString resourceText(const QString& path)
 {
-    QFile scriptFile(QStringLiteral(":/scripts/marker_ocr_worker.py"));
+    QFile scriptFile(path);
     if (!scriptFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
         return {};
     }
     return QString::fromUtf8(scriptFile.readAll());
+}
+
+QString markerOcrServicePythonScript()
+{
+    return resourceText(QStringLiteral(":/scripts/marker_ocr_worker.py"));
+}
+
+QString markerOcrRouteWorkerPythonScript()
+{
+    return resourceText(QStringLiteral(":/scripts/marker_ocr_route_worker.py"));
 }
 
 QProcessEnvironment ocrProcessEnvironment()
@@ -448,6 +458,12 @@ private:
               "Marker OCR requires Python with marker-pdf installed."));
             return;
         }
+        const QString workerScript = markerOcrServicePythonScript();
+        const QString routeWorkerScript = markerOcrRouteWorkerPythonScript();
+        if (workerScript.isEmpty() || routeWorkerScript.isEmpty()) {
+            failPending(QObject::tr("Marker OCR worker script is missing."));
+            return;
+        }
 
         m_idleTimer->stop();
         m_ready = false;
@@ -483,7 +499,8 @@ private:
         m_process->start(python,
                          { QStringLiteral("-u"),
                            QStringLiteral("-c"),
-                           markerOcrServicePythonScript() });
+                           workerScript,
+                           routeWorkerScript });
     }
 
     void startNextRequest()
