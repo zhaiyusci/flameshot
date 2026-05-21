@@ -8,17 +8,22 @@
 #include <functional>
 
 namespace MarkerOcr {
-using Callback = std::function<void(bool,
-                                    const QString&,
-                                    const QString&,
-                                    const QString&,
-                                    const QString&,
-                                    const QString&,
-                                    const QString&,
-                                    const QString&,
-                                    const QString&,
-                                    const QString&,
-                                    const QString&)>;
+struct Result
+{
+    bool ok = false;
+    QString text;
+    QString latex;
+    QString fallbackText;
+    QString fallbackLatex;
+    QString resultInfo;
+    QString fallbackInfo;
+    QString extraText;
+    QString extraLatex;
+    QString extraInfo;
+    QString error;
+};
+
+using Callback = std::function<void(const Result&)>;
 
 int timeoutMs();
 int recognize(const QString& imagePath, Callback callback);

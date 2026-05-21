@@ -453,13 +453,13 @@ void OcrResultWidget::startFormulaRouteRequest()
     QPointer<OcrResultWidget> guard(this);
     m_formulaRouteRequestId = OcrTaskWidget::requestMarkerFormulaOcr(
       m_capture,
-      [guard](bool ok,
-              const QString& text,
-              const QString& latex,
-              const QString& info,
-              const QString& error) {
+      [guard](const MarkerOcr::Result& result) {
           if (guard) {
-              guard->finishFormulaRouteRequest(ok, text, latex, info, error);
+              guard->finishFormulaRouteRequest(result.ok,
+                                               result.text,
+                                               result.latex,
+                                               result.resultInfo,
+                                               result.error);
           }
       });
 }

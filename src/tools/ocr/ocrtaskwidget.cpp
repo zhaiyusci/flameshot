@@ -62,6 +62,28 @@ QString ocrTextPreview(const QString& text)
     }
     return preview;
 }
+
+MarkerOcr::Result failedMarkerOcrResult(const QString& error)
+{
+    MarkerOcr::Result result;
+    result.error = error;
+    return result;
+}
+
+MarkerOcr::Result trimmedMarkerOcrResult(MarkerOcr::Result result)
+{
+    result.text = result.text.trimmed();
+    result.latex = result.latex.trimmed();
+    result.fallbackText = result.fallbackText.trimmed();
+    result.fallbackLatex = result.fallbackLatex.trimmed();
+    result.resultInfo = result.resultInfo.trimmed();
+    result.fallbackInfo = result.fallbackInfo.trimmed();
+    result.extraText = result.extraText.trimmed();
+    result.extraLatex = result.extraLatex.trimmed();
+    result.extraInfo = result.extraInfo.trimmed();
+    result.error = result.error.trimmed();
+    return result;
+}
 }
 
 OcrTaskWidget::OcrTaskWidget(Kind kind, const QPixmap& capture, QWidget* parent)
@@ -94,11 +116,8 @@ int OcrTaskWidget::requestMarkerFormulaOcr(const QPixmap& capture,
     if (capture.isNull()) {
         QTimer::singleShot(0, qApp, [callback = std::move(callback)]() {
             if (callback) {
-                callback(false,
-                         QString(),
-                         QString(),
-                         QString(),
-                         QObject::tr("Unable to prepare image."));
+                callback(failedMarkerOcrResult(
+                  QObject::tr("Unable to prepare image.")));
             }
         });
         return 0;
@@ -114,12 +133,9 @@ int OcrTaskWidget::requestMarkerFormulaOcr(const QPixmap& capture,
         QFile::remove(imageFile.fileName());
         QTimer::singleShot(0, qApp, [callback = std::move(callback)]() {
             if (callback) {
-                callback(false,
-                         QString(),
-                         QString(),
-                         QString(),
-                         QObject::tr("Unable to create a temporary image for "
-                                     "formula OCR."));
+                callback(failedMarkerOcrResult(
+                  QObject::tr("Unable to create a temporary image for formula "
+                              "OCR.")));
             }
         });
         return 0;
@@ -135,23 +151,7 @@ int OcrTaskWidget::requestMarkerFormulaOcr(const QPixmap& capture,
     return MarkerOcr::recognizeFormula(
       imagePath,
       [imagePath, callback = std::move(callback)](
-        bool ok,
-        const QString& text,
-        const QString& latex,
-        const QString& fallbackText,
-        const QString& fallbackLatex,
-        const QString& resultInfo,
-        const QString& fallbackInfo,
-        const QString& extraText,
-        const QString& extraLatex,
-        const QString& extraInfo,
-        const QString& error) {
-          Q_UNUSED(fallbackText)
-          Q_UNUSED(fallbackLatex)
-          Q_UNUSED(fallbackInfo)
-          Q_UNUSED(extraText)
-          Q_UNUSED(extraLatex)
-          Q_UNUSED(extraInfo)
+        const MarkerOcr::Result& result) {
           if (keepOcrTempImage()) {
               AbstractLogger::info(AbstractLogger::Stderr)
                 << QObject::tr("Keeping OCR temporary image: %1")
@@ -160,7 +160,7 @@ int OcrTaskWidget::requestMarkerFormulaOcr(const QPixmap& capture,
               QFile::remove(imagePath);
           }
           if (callback) {
-              callback(ok, text, latex, resultInfo, error);
+              callback(result);
           }
       });
 }
@@ -254,29 +254,10 @@ void OcrTaskWidget::startMarkerOcr()
     m_markerOcrRequestTimedOut = false;
     m_markerOcrRequestId = MarkerOcr::recognize(
       m_imagePath,
-      [guard = QPointer<OcrTaskWidget>(this)](bool ok,
-                                              const QString& text,
-                                              const QString& latex,
-                                              const QString& fallbackText,
-                                              const QString& fallbackLatex,
-                                              const QString& resultInfo,
-                                              const QString& fallbackInfo,
-                                              const QString& extraText,
-                                              const QString& extraLatex,
-                                              const QString& extraInfo,
-                                              const QString& error) {
+      [guard = QPointer<OcrTaskWidget>(this)](
+        const MarkerOcr::Result& result) {
           if (guard) {
-              guard->handleMarkerOcrServiceFinished(ok,
-                                                    text,
-                                                    latex,
-                                                    fallbackText,
-                                                    fallbackLatex,
-                                                    resultInfo,
-                                                    fallbackInfo,
-                                                    extraText,
-                                                    extraLatex,
-                                                    extraInfo,
-                                                    error);
+              guard->handleMarkerOcrServiceFinished(result);
           }
     });
 
@@ -292,17 +273,8 @@ void OcrTaskWidget::startMarkerOcr()
     });
 }
 
-void OcrTaskWidget::handleMarkerOcrServiceFinished(bool ok,
-                                                   const QString& text,
-                                                   const QString& latex,
-                                                   const QString& fallbackText,
-                                                   const QString& fallbackLatex,
-                                                   const QString& resultInfo,
-                                                   const QString& fallbackInfo,
-                                                   const QString& extraText,
-                                                   const QString& extraLatex,
-                                                   const QString& extraInfo,
-                                                   const QString& error)
+void OcrTaskWidget::handleMarkerOcrServiceFinished(
+  const MarkerOcr::Result& result)
 {
     if (m_markerOcrRequestId == 0) {
         return;
@@ -318,23 +290,16 @@ void OcrTaskWidget::handleMarkerOcrServiceFinished(bool ok,
         return;
     }
 
-    if (!ok || timedOut) {
+    if (!result.ok || timedOut) {
         m_lastError = timedOut ? tr("Marker OCR backend timed out.")
-                               : tr("Marker OCR backend failed: %1").arg(error);
+                               : tr("Marker OCR backend failed: %1")
+                                   .arg(result.error);
         AbstractLogger::warning(AbstractLogger::Stderr) << m_lastError;
         failTask(m_lastError);
         return;
     }
 
-    completeStructuredOcr(text.trimmed(),
-                          latex.trimmed(),
-                          fallbackText.trimmed(),
-                          fallbackLatex.trimmed(),
-                          resultInfo.trimmed(),
-                          fallbackInfo.trimmed(),
-                          extraText.trimmed(),
-                          extraLatex.trimmed(),
-                          extraInfo.trimmed());
+    completeStructuredOcr(trimmedMarkerOcrResult(result));
 }
 
 void OcrTaskWidget::cancelTask()
@@ -379,42 +344,36 @@ void OcrTaskWidget::failTask(const QString& error)
     close();
 }
 
-void OcrTaskWidget::completeStructuredOcr(const QString& text,
-                                          const QString& latex,
-                                          const QString& fallbackText,
-                                          const QString& fallbackLatex,
-                                          const QString& resultInfo,
-                                          const QString& fallbackInfo,
-                                          const QString& extraText,
-                                          const QString& extraLatex,
-                                          const QString& extraInfo)
+void OcrTaskWidget::completeStructuredOcr(const MarkerOcr::Result& result)
 {
     cleanupImage();
-    if (text.isEmpty() && latex.isEmpty() && fallbackText.isEmpty() &&
-        fallbackLatex.isEmpty() && extraText.isEmpty() &&
-        extraLatex.isEmpty()) {
+    if (result.text.isEmpty() && result.latex.isEmpty() &&
+        result.fallbackText.isEmpty() && result.fallbackLatex.isEmpty() &&
+        result.extraText.isEmpty() && result.extraLatex.isEmpty()) {
         AbstractLogger::warning() << tr("No text or formula was recognized.");
     } else {
         AbstractLogger::info(AbstractLogger::Stderr)
           << tr("OCR backend succeeded: textChars=%1, latexChars=%2, "
                 "fallbackChars=%3, extraChars=%4, text=%5, latex=%6")
-               .arg(QString::number(text.size()),
-                    QString::number(latex.size()),
-                    QString::number(fallbackText.size() + fallbackLatex.size()),
-                    QString::number(extraText.size() + extraLatex.size()),
-                    ocrTextPreview(text),
-                    latexPreview(latex));
+               .arg(QString::number(result.text.size()),
+                    QString::number(result.latex.size()),
+                    QString::number(result.fallbackText.size() +
+                                    result.fallbackLatex.size()),
+                    QString::number(result.extraText.size() +
+                                    result.extraLatex.size()),
+                    ocrTextPreview(result.text),
+                    latexPreview(result.latex));
     }
     emit ocrCompleted(m_capture,
-                      text,
-                      latex,
-                      fallbackText,
-                      fallbackLatex,
-                      resultInfo,
-                      fallbackInfo,
-                      extraText,
-                      extraLatex,
-                      extraInfo);
+                      result.text,
+                      result.latex,
+                      result.fallbackText,
+                      result.fallbackLatex,
+                      result.resultInfo,
+                      result.fallbackInfo,
+                      result.extraText,
+                      result.extraLatex,
+                      result.extraInfo);
     close();
 }
 

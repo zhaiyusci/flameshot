@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include "tools/ocr/markerocrservice.h"
+
 #include <QPixmap>
 #include <QThread>
 #include <QWidget>
@@ -28,11 +30,8 @@ public:
     void cancelTask();
     static bool isMarkerOcrServiceRunning();
     static void stopMarkerOcrService();
-    using MarkerFormulaCallback = std::function<void(bool,
-                                                     const QString&,
-                                                     const QString&,
-                                                     const QString&,
-                                                     const QString&)>;
+    using MarkerFormulaCallback =
+      std::function<void(const MarkerOcr::Result&)>;
     static int requestMarkerFormulaOcr(const QPixmap& capture,
                                        MarkerFormulaCallback callback);
     static void cancelMarkerOcrRequest(int requestId);
@@ -56,28 +55,10 @@ signals:
 private:
     void startMarkerOcr();
     void startBarcodeScan();
-    void handleMarkerOcrServiceFinished(bool ok,
-                                        const QString& text,
-                                        const QString& latex,
-                                        const QString& fallbackText,
-                                        const QString& fallbackLatex,
-                                        const QString& resultInfo,
-                                        const QString& fallbackInfo,
-                                        const QString& extraText,
-                                        const QString& extraLatex,
-                                        const QString& extraInfo,
-                                        const QString& error);
+    void handleMarkerOcrServiceFinished(const MarkerOcr::Result& result);
     void handleBarcodeScanFinished(const QString& result, const QString& error);
     void failTask(const QString& error);
-    void completeStructuredOcr(const QString& text,
-                               const QString& latex,
-                               const QString& fallbackText,
-                               const QString& fallbackLatex,
-                               const QString& resultInfo,
-                               const QString& fallbackInfo,
-                               const QString& extraText,
-                               const QString& extraLatex,
-                               const QString& extraInfo);
+    void completeStructuredOcr(const MarkerOcr::Result& result);
     void completeBarcodeScan(const QString& result);
     void cleanupProcess();
     void cleanupImage();
