@@ -375,20 +375,12 @@ public:
                 continue;
             }
             const Request request = m_queue.takeAt(i);
-            if (request.callback) {
-                request.callback(MarkerOcr::failedResult(
-                  QObject::tr("Marker OCR task cancelled")));
-            }
+            failRequest(request, QObject::tr("Marker OCR task cancelled"));
             return;
         }
 
         if (m_current.id == id) {
-            const Callback callback = m_current.callback;
-            m_current = {};
-            if (callback) {
-                callback(MarkerOcr::failedResult(
-                  QObject::tr("Marker OCR task cancelled")));
-            }
+            failCurrent(QObject::tr("Marker OCR task cancelled"));
             stopProcess();
             if (!m_queue.isEmpty()) {
                 ensureProcess();
@@ -399,18 +391,9 @@ public:
 
     void stop()
     {
-        for (const Request& request : m_queue) {
-            if (request.callback) {
-                request.callback(MarkerOcr::failedResult(
-                  QObject::tr("Marker OCR worker was stopped")));
-            }
-        }
-        m_queue.clear();
-        if (m_current.id != 0 && m_current.callback) {
-            m_current.callback(MarkerOcr::failedResult(
-              QObject::tr("Marker OCR worker was stopped")));
-        }
-        m_current = {};
+        const QString error = QObject::tr("Marker OCR worker was stopped");
+        failQueued(error);
+        failCurrent(error);
         stopProcess();
     }
 
@@ -585,7 +568,6 @@ private:
             return;
         }
 
-        const Callback callback = m_current.callback;
         const MarkerOcr::Result result = markerOcrResultFromJson(object);
         const QString traceback =
           object.value(QStringLiteral("traceback")).toString();
@@ -595,10 +577,7 @@ private:
                    .arg(traceback.left(1200));
         }
 
-        m_current = {};
-        if (callback) {
-            callback(result);
-        }
+        finishCurrent(result);
 
         if (m_queue.isEmpty()) {
             const int idleTimeout = markerOcrIdleTimeoutMs();
@@ -623,12 +602,7 @@ private:
         m_stdoutBuffer.clear();
 
         if (m_current.id != 0) {
-            const Callback callback = m_current.callback;
-            m_current = {};
-            if (callback) {
-                callback(MarkerOcr::failedResult(
-                  QObject::tr("Marker OCR worker exited unexpectedly")));
-            }
+            failCurrent(QObject::tr("Marker OCR worker exited unexpectedly"));
         }
 
         if (!m_queue.isEmpty()) {
@@ -638,16 +612,40 @@ private:
 
     void failPending(const QString& error)
     {
+        failQueued(error);
+        failCurrent(error);
+    }
+
+    void failRequest(const Request& request, const QString& error)
+    {
+        if (request.callback) {
+            request.callback(MarkerOcr::failedResult(error));
+        }
+    }
+
+    void failQueued(const QString& error)
+    {
         for (const Request& request : m_queue) {
-            if (request.callback) {
-                request.callback(MarkerOcr::failedResult(error));
-            }
+            failRequest(request, error);
         }
         m_queue.clear();
-        if (m_current.id != 0 && m_current.callback) {
-            m_current.callback(MarkerOcr::failedResult(error));
+    }
+
+    void failCurrent(const QString& error)
+    {
+        if (m_current.id == 0) {
+            return;
         }
+        finishCurrent(MarkerOcr::failedResult(error));
+    }
+
+    void finishCurrent(const MarkerOcr::Result& result)
+    {
+        const Callback callback = std::move(m_current.callback);
         m_current = {};
+        if (callback) {
+            callback(result);
+        }
     }
 
     void stopProcess()
