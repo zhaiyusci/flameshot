@@ -41,6 +41,7 @@ public:
     void move(const QPoint& pos) override;
     const QPoint* pos() override;
     void transform(const QPointF& scale, const QPointF& offset) override;
+    void remap(const QRectF& sourceRect, const QRectF& targetRect) override;
     void drawObjectSelection(QPainter& painter) override;
 
     void setEditMode(bool editMode) override;

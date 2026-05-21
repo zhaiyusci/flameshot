@@ -62,6 +62,11 @@ bool verifyLaunchFile()
       QSharedPointer<KeySequence>(                                             \
         new KeySequence(QKeySequence(QLatin1String(DEFAULT_VALUE)))) }
 
+constexpr int legacyDrawFontSizeDefault = 8;
+constexpr int textPointSizeOffsetBeforePointSizeConfig = 8;
+constexpr int defaultDrawFontPointSize =
+  legacyDrawFontSizeDefault + textPointSizeOffsetBeforePointSizeConfig;
+
 /**
  * This map contains all the information that is needed to parse, verify and
  * preprocess each configuration option in the General section.
@@ -113,7 +118,8 @@ static QMap<class QString, QSharedPointer<ValueHandler>>
     // Others
     // drawThickness shared by Pencil, Line, Arrow, Rectangular Selection, Circle
     OPTION("drawThickness"               ,LowerBoundedInt    ( 1, 3          )),
-    OPTION("drawFontSize"                ,LowerBoundedInt    ( 1, 8          )),
+    OPTION("drawFontSize"                ,LowerBoundedInt    ( 1, defaultDrawFontPointSize )),
+    OPTION("drawFontSizePointSize"       ,Bool               ( false         )),
     OPTION("drawCircleCounterSize"       ,LowerBoundedInt    ( 1, 1          )),
     OPTION("drawPixelateSize"            ,LowerBoundedInt    ( 1, 2          )),
     OPTION("drawRectangleSize"           ,LowerBoundedInt    ( 1, 1          )),
@@ -258,6 +264,20 @@ ConfigHandler::ConfigHandler()
                          });
     }
     firstInitialization = false;
+
+    if (!m_settings.value(QStringLiteral("drawFontSizePointSize")).toBool()) {
+        const QVariant storedFontSize =
+          m_settings.value(QStringLiteral("drawFontSize"));
+        const int legacyFontSize = storedFontSize.isValid()
+                                     ? storedFontSize.toInt()
+                                     : legacyDrawFontSizeDefault;
+        setValue(QStringLiteral("drawFontSize"),
+                 qMax(1,
+                      legacyFontSize +
+                        textPointSizeOffsetBeforePointSizeConfig));
+        setValue(QStringLiteral("drawFontSizePointSize"), true);
+        m_settings.sync();
+    }
 }
 
 /// Serves as an object to which slots can be connected.

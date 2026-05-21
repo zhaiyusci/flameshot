@@ -17,6 +17,7 @@ class QSlider;
 class QCheckBox;
 
 constexpr int maxToolSize = 50;
+constexpr int maxTextToolSize = 200;
 constexpr int minSliderWidth = 100;
 
 class SidePanelWidget : public QWidget
@@ -38,6 +39,7 @@ signals:
     void gridSizeChanged(int size);
 
 public slots:
+    void setToolSizeMaximum(int maximum);
     void onToolSizeChanged(int tool);
     void onColorChanged(const QColor& color);
     void startColorGrab();

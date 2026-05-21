@@ -55,6 +55,13 @@ QPoint remappedPoint(const QPoint& point,
       .toPoint();
 }
 
+int scaledThickness(int thickness, const QPointF& scale)
+{
+    const qreal thicknessScale =
+      (std::abs(scale.x()) + std::abs(scale.y())) / 2.0;
+    return qMax(1, qRound(thickness * thicknessScale));
+}
+
 }
 
 AbstractTwoPointTool::AbstractTwoPointTool(QObject* parent)
@@ -249,6 +256,7 @@ void AbstractTwoPointTool::transform(const QPointF& scale,
 {
     m_points.first = transformedPoint(m_points.first, scale, offset);
     m_points.second = transformedPoint(m_points.second, scale, offset);
+    m_thickness = scaledThickness(m_thickness, scale);
 }
 
 void AbstractTwoPointTool::remap(const QRectF& sourceRect,
@@ -256,4 +264,12 @@ void AbstractTwoPointTool::remap(const QRectF& sourceRect,
 {
     m_points.first = remappedPoint(m_points.first, sourceRect, targetRect);
     m_points.second = remappedPoint(m_points.second, sourceRect, targetRect);
+
+    const qreal scaleX = sourceRect.width() > 0.0
+                           ? targetRect.width() / sourceRect.width()
+                           : 1.0;
+    const qreal scaleY = sourceRect.height() > 0.0
+                           ? targetRect.height() / sourceRect.height()
+                           : 1.0;
+    m_thickness = scaledThickness(m_thickness, QPointF(scaleX, scaleY));
 }

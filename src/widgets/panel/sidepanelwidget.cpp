@@ -147,9 +147,21 @@ void SidePanelWidget::onColorChanged(const QColor& color)
     m_colorWheel->setColor(color);
 }
 
+void SidePanelWidget::setToolSizeMaximum(int maximum)
+{
+    const int boundedMaximum = qMax(1, maximum);
+    if (m_toolSizeSpin->maximum() == boundedMaximum &&
+        m_toolSizeSlider->maximum() == boundedMaximum) {
+        return;
+    }
+
+    m_toolSizeSpin->setRange(1, boundedMaximum);
+    m_toolSizeSlider->setRange(1, boundedMaximum);
+}
+
 void SidePanelWidget::onToolSizeChanged(int t)
 {
-    m_toolSize = qBound(0, t, maxToolSize);
+    m_toolSize = qBound(1, t, m_toolSizeSpin->maximum());
     m_toolSizeSlider->setValue(m_toolSize);
     m_toolSizeSpin->setValue(m_toolSize);
 }

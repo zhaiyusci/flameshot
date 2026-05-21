@@ -15,6 +15,7 @@ public:
     void setFont(const QFont& f);
 
 protected:
+    bool event(QEvent* event) override;
     void showEvent(QShowEvent* e);
     void resizeEvent(QResizeEvent* e);
 

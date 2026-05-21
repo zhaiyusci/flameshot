@@ -3,6 +3,9 @@
 
 #include "textwidget.h"
 
+#include <QEvent>
+#include <QKeyEvent>
+
 TextWidget::TextWidget(QWidget* parent)
   : QTextEdit(parent)
 {
@@ -12,6 +15,24 @@ TextWidget::TextWidget(QWidget* parent)
     setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     setContextMenuPolicy(Qt::NoContextMenu);
+}
+
+bool TextWidget::event(QEvent* event)
+{
+    if (event->type() == QEvent::ShortcutOverride) {
+        auto* keyEvent = static_cast<QKeyEvent*>(event);
+        const bool commitShortcut =
+          keyEvent->modifiers() == Qt::ControlModifier &&
+          (keyEvent->key() == Qt::Key_Return ||
+           keyEvent->key() == Qt::Key_Enter);
+        const bool escapeShortcut = keyEvent->key() == Qt::Key_Escape;
+        if (!commitShortcut && !escapeShortcut) {
+            event->accept();
+            return true;
+        }
+    }
+
+    return QTextEdit::event(event);
 }
 
 void TextWidget::showEvent(QShowEvent* e)

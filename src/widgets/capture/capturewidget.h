@@ -135,6 +135,7 @@ private:
     void pushObjectsStateToUndoStack();
     void releaseActiveTool();
     void uncheckActiveTool();
+    int textToolItemAtPos(const QPoint& pos);
     int selectToolItemAtPos(const QPoint& pos,
                             bool allowActiveButtonSelection = false);
     void showColorPicker(const QPoint& pos);
@@ -152,6 +153,11 @@ private:
     void updateSelectionState();
     void updateTool(CaptureTool* tool);
     void updateLayersPanel();
+    int currentToolSizeMaximum();
+    void updateToolSizeControls();
+    void activateDefaultToolForLocalImage();
+    void refocusToolWidget();
+    bool textEditInProgress() const;
     bool objectPointerMode() const;
     bool objectPointerCanEdit();
     ToolObjectEditHandle toolObjectEditHandleAt(const QPoint& pos);
@@ -240,6 +246,7 @@ private:
     SelectionWidget::SideType m_mouseOverHandle;
 
     QMap<CaptureTool::Type, CaptureTool*> m_tools;
+    QMap<CaptureTool::Type, CaptureToolButton*> m_toolButtons;
     CaptureToolObjects m_captureToolObjects;
     CaptureToolObjects m_captureToolObjectsBackup;
 
@@ -247,6 +254,7 @@ private:
     QPoint m_activeToolOffsetToMouseOnStart;
     ToolObjectEditHandle m_activeToolEditHandle;
     QPoint m_activeToolEditHandleOffsetToMouseOnStart;
+    int m_activeToolEditLayerIndex{ -1 };
 
     // XYWH display position and timer
     bool m_xywhDisplay;

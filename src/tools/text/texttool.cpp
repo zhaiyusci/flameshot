@@ -8,17 +8,75 @@
 
 #include <cmath>
 
-#define BASE_POINT_SIZE 8
 #define MAX_INFO_LENGTH 24
+
+namespace {
+
+constexpr int defaultTextPointSize = 16;
+
+QPoint transformedPoint(const QPoint& point,
+                        const QPointF& scale,
+                        const QPointF& offset)
+{
+    return QPointF(point.x() * scale.x() + offset.x(),
+                   point.y() * scale.y() + offset.y())
+      .toPoint();
+}
+
+QPoint remappedPoint(const QPoint& point,
+                     const QRectF& sourceRect,
+                     const QRectF& targetRect)
+{
+    const qreal sourceWidth = sourceRect.width() - 1.0;
+    const qreal sourceHeight = sourceRect.height() - 1.0;
+    const qreal targetWidth = targetRect.width() - 1.0;
+    const qreal targetHeight = targetRect.height() - 1.0;
+    const qreal xRatio = sourceWidth > 0.0
+                           ? (point.x() - sourceRect.left()) / sourceWidth
+                           : 0.0;
+    const qreal yRatio = sourceHeight > 0.0
+                           ? (point.y() - sourceRect.top()) / sourceHeight
+                           : 0.0;
+    return QPointF(targetRect.left() + xRatio * qMax<qreal>(0.0, targetWidth),
+                   targetRect.top() + yRatio * qMax<qreal>(0.0, targetHeight))
+      .toPoint();
+}
+
+qreal fontPointSize(const QFont& font, int size)
+{
+    if (font.pointSizeF() > 0.0) {
+        return font.pointSizeF();
+    }
+    if (font.pointSize() > 0) {
+        return font.pointSize();
+    }
+    return size;
+}
+
+void scaleTextFont(QFont& font, int& size, qreal scale)
+{
+    const qreal targetPointSize =
+      qMax<qreal>(1.0, fontPointSize(font, size) * scale);
+    font.setPointSizeF(targetPointSize);
+    size = qMax(1, qRound(targetPointSize));
+}
+
+qreal averageScale(const QPointF& scale)
+{
+    return (std::abs(scale.x()) + std::abs(scale.y())) / 2.0;
+}
+
+}
 
 TextTool::TextTool(QObject* parent)
   : CaptureTool(parent)
-  , m_size(1)
+  , m_size(defaultTextPointSize)
 {
     QString fontFamily = ConfigHandler().fontFamily();
     if (!fontFamily.isEmpty()) {
         m_font.setFamily(ConfigHandler().fontFamily());
     }
+    m_font.setPointSize(m_size);
     m_alignment = Qt::AlignLeft;
 }
 
@@ -104,7 +162,9 @@ QWidget* TextTool::widget()
     closeEditor();
     m_widget = new TextWidget();
     m_widget->setTextColor(m_color);
-    m_font.setPointSize(m_size + BASE_POINT_SIZE);
+    if (m_font.pointSizeF() <= 0.0) {
+        m_font.setPointSize(m_size);
+    }
     m_widget->setFont(m_font);
     m_widget->setAlignment(m_alignment);
     m_widget->setText(m_text);
@@ -252,7 +312,8 @@ void TextTool::drawMove(const QPoint& point)
 void TextTool::drawStart(const CaptureContext& context)
 {
     m_color = context.color;
-    m_size = context.toolSize;
+    m_size = qMax(1, context.toolSize);
+    m_font.setPointSize(m_size);
     emit requestAction(REQ_ADD_CHILD_WIDGET);
 }
 
@@ -271,8 +332,8 @@ void TextTool::onColorChanged(const QColor& color)
 
 void TextTool::onSizeChanged(int size)
 {
-    m_size = size;
-    m_font.setPointSize(m_size + BASE_POINT_SIZE);
+    m_size = qMax(1, size);
+    m_font.setPointSize(m_size);
     if (m_widget != nullptr) {
         m_widget->setFont(m_font);
     }
@@ -333,19 +394,37 @@ void TextTool::move(const QPoint& pos)
 
 void TextTool::transform(const QPointF& scale, const QPointF& offset)
 {
-    const QPointF transformedTopLeft(m_textArea.left() * scale.x() +
-                                      offset.x(),
-                                    m_textArea.top() * scale.y() +
-                                      offset.y());
     const QSize transformedSize(
       qMax(1, qRound(m_textArea.width() * std::abs(scale.x()))),
       qMax(1, qRound(m_textArea.height() * std::abs(scale.y()))));
-    m_textArea = QRect(transformedTopLeft.toPoint(), transformedSize);
+    m_textArea = QRect(transformedPoint(m_textArea.topLeft(), scale, offset),
+                       transformedSize);
 
-    const qreal fontScale =
-      (std::abs(scale.x()) + std::abs(scale.y())) / 2.0;
-    m_size = qMax(1, qRound(m_size * fontScale));
-    m_font.setPointSize(m_size + BASE_POINT_SIZE);
+    scaleTextFont(m_font, m_size, averageScale(scale));
+    if (m_widget != nullptr) {
+        m_widget->setFont(m_font);
+    }
+}
+
+void TextTool::remap(const QRectF& sourceRect, const QRectF& targetRect)
+{
+    const qreal scaleX = sourceRect.width() > 0.0
+                           ? targetRect.width() / sourceRect.width()
+                           : 1.0;
+    const qreal scaleY = sourceRect.height() > 0.0
+                           ? targetRect.height() / sourceRect.height()
+                           : 1.0;
+    const QPointF scale(scaleX, scaleY);
+    const QSize transformedSize(
+      qMax(1, qRound(m_textArea.width() * std::abs(scale.x()))),
+      qMax(1, qRound(m_textArea.height() * std::abs(scale.y()))));
+
+    m_textArea = QRect(remappedPoint(m_textArea.topLeft(),
+                                     sourceRect,
+                                     targetRect),
+                       transformedSize);
+
+    scaleTextFont(m_font, m_size, averageScale(scale));
     if (m_widget != nullptr) {
         m_widget->setFont(m_font);
     }
@@ -367,6 +446,9 @@ const QPoint* TextTool::pos()
 
 void TextTool::setEditMode(bool editMode)
 {
+    if (!editMode && m_widget != nullptr) {
+        updateText(m_widget->toPlainText());
+    }
     if (editMode) {
         m_textOld = m_text;
     }
