@@ -46,6 +46,69 @@ void fillEditorBackground(QPixmap& pixmap)
 
     pixmap = QPixmap::fromImage(background);
 }
+
+struct PinEditorGeometry
+{
+    QScreen* screen = nullptr;
+    int screenIndex = -1;
+    QRect imageLocalRect;
+    QRect initialSelection;
+};
+
+bool resolvePinEditorGeometry(const QLabel* label,
+                              PinEditorGeometry* editorGeometry)
+{
+    if (!label || !editorGeometry) {
+        return false;
+    }
+
+    const QRect imageGlobalRect(label->mapToGlobal(QPoint(0, 0)),
+                                label->size());
+    QScreen* screen = QGuiApplication::screenAt(imageGlobalRect.center());
+    if (!screen) {
+        screen = QGuiAppCurrentScreen().currentScreen();
+    }
+    if (!screen) {
+        screen = QGuiApplication::primaryScreen();
+    }
+    if (!screen) {
+        return false;
+    }
+
+    const auto screens = QGuiApplication::screens();
+    const int screenIndex = screens.indexOf(screen);
+    if (screenIndex < 0) {
+        return false;
+    }
+
+    const QRect screenGeometry = screen->geometry();
+    const QRect screenLocalRect(QPoint(0, 0), screenGeometry.size());
+    const QRect imageLocalRect(imageGlobalRect.topLeft() -
+                                 screenGeometry.topLeft(),
+                               imageGlobalRect.size());
+    const QRect initialSelection = imageLocalRect.intersected(screenLocalRect);
+    if (initialSelection.isNull()) {
+        return false;
+    }
+
+    editorGeometry->screen = screen;
+    editorGeometry->screenIndex = screenIndex;
+    editorGeometry->imageLocalRect = imageLocalRect;
+    editorGeometry->initialSelection = initialSelection;
+    return true;
+}
+
+QPixmap editorBackgroundPixmap(const QSize& screenSize,
+                               const QRect& imageLocalRect,
+                               const QPixmap& editorBasePixmap)
+{
+    QPixmap editorPixmapOnScreen(screenSize);
+    fillEditorBackground(editorPixmapOnScreen);
+
+    QPainter painter(&editorPixmapOnScreen);
+    painter.drawPixmap(imageLocalRect, editorBasePixmap);
+    return editorPixmapOnScreen;
+}
 }
 
 PinWidget::PinWidget(const QPixmap& pixmap,
@@ -382,46 +445,21 @@ void PinWidget::openTools()
     const QPixmap editorBasePixmap =
       useEditableState ? m_basePixmap : editorPixmap;
 
-    const QRect imageGlobalRect(m_label->mapToGlobal(QPoint(0, 0)),
-                                m_label->size());
-    QScreen* screen = QGuiApplication::screenAt(imageGlobalRect.center());
-    if (!screen) {
-        screen = QGuiAppCurrentScreen().currentScreen();
-    }
-    if (!screen) {
-        screen = QGuiApplication::primaryScreen();
-    }
-    if (!screen) {
+    PinEditorGeometry editorGeometry;
+    if (!resolvePinEditorGeometry(m_label, &editorGeometry)) {
         return;
     }
-
-    const QRect screenGeometry = screen->geometry();
-    const QRect screenLocalRect(QPoint(0, 0), screenGeometry.size());
-    const QRect imageLocalRect(imageGlobalRect.topLeft() -
-                                 screenGeometry.topLeft(),
-                               imageGlobalRect.size());
-    const QRect initialSelection = imageLocalRect.intersected(screenLocalRect);
-    if (initialSelection.isNull()) {
-        return;
-    }
-
-    QPixmap editorPixmapOnScreen(screenGeometry.size());
-    fillEditorBackground(editorPixmapOnScreen);
-    QPainter painter(&editorPixmapOnScreen);
-    painter.drawPixmap(imageLocalRect, editorBasePixmap);
-    painter.end();
-
-    const auto screens = QGuiApplication::screens();
-    const int screenIndex = screens.indexOf(screen);
-    if (screenIndex < 0) {
-        return;
-    }
+    const QRect screenGeometry = editorGeometry.screen->geometry();
+    const QPixmap editorPixmapOnScreen =
+      editorBackgroundPixmap(screenGeometry.size(),
+                             editorGeometry.imageLocalRect,
+                             editorBasePixmap);
 
     CaptureRequest request(CaptureRequest::GRAPHICAL_MODE,
                            0,
                            tr("Pin Tools"));
-    request.setSelectedMonitor(screenIndex);
-    request.setInitialSelection(initialSelection);
+    request.setSelectedMonitor(editorGeometry.screenIndex);
+    request.setInitialSelection(editorGeometry.initialSelection);
 
     hide();
 
@@ -431,7 +469,7 @@ void PinWidget::openTools()
         CaptureToolObjects editorObjects;
         editorObjects.assignMappedFrom(m_captureToolObjects,
                                        QRectF(QPointF(0, 0), sourceSize),
-                                       QRectF(imageLocalRect),
+                                       QRectF(editorGeometry.imageLocalRect),
                                        &editorObjects);
         editor->setCaptureToolObjects(editorObjects);
     }
