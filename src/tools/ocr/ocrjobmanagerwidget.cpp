@@ -432,9 +432,6 @@ void OcrJobManagerWidget::updateButtons()
 {
     const int index = selectedJobIndex();
     const bool hasJob = index >= 0;
-    const bool hasResult =
-      hasJob && (!jobResultText(m_jobs.at(index)).isEmpty() ||
-                 !jobFallbackText(m_jobs.at(index)).isEmpty());
     const bool canCancel = hasJob && m_jobs.at(index).task;
     const bool hasRunningJobs = runningJobCount() > 0;
     bool hasHistory = false;
@@ -444,8 +441,10 @@ void OcrJobManagerWidget::updateButtons()
             break;
         }
     }
-    m_copyButton->setEnabled(hasResult);
-    m_openButton->setEnabled(hasResult);
+    m_copyButton->setEnabled(hasJob &&
+                             jobHasCopyableResult(m_jobs.at(index)));
+    m_openButton->setEnabled(hasJob &&
+                             jobHasOpenableResult(m_jobs.at(index)));
     m_killButton->setEnabled(canCancel);
     m_killAllButton->setEnabled(hasRunningJobs);
     m_clearHistoryButton->setEnabled(hasHistory);
@@ -524,6 +523,17 @@ QString OcrJobManagerWidget::jobFallbackText(const Job& job) const
     return ocr.fallbackLatex;
 }
 
+bool OcrJobManagerWidget::jobHasCopyableResult(const Job& job) const
+{
+    return !jobResultText(job).isEmpty();
+}
+
+bool OcrJobManagerWidget::jobHasOpenableResult(const Job& job) const
+{
+    return jobHasCopyableResult(job) || !jobFallbackText(job).isEmpty() ||
+           !job.ocr.extraText.isEmpty() || !job.ocr.extraLatex.isEmpty();
+}
+
 QString OcrJobManagerWidget::resultPaneTitle(const Job& job) const
 {
     const QString title =
@@ -574,10 +584,7 @@ QString OcrJobManagerWidget::jobStatusText(const Job& job) const
 void OcrJobManagerWidget::openJobResult(int index)
 {
     if (index < 0 || index >= m_jobs.size() ||
-        (jobResultText(m_jobs.at(index)).isEmpty() &&
-         jobFallbackText(m_jobs.at(index)).isEmpty() &&
-         m_jobs.at(index).ocr.extraText.isEmpty() &&
-         m_jobs.at(index).ocr.extraLatex.isEmpty())) {
+        !jobHasOpenableResult(m_jobs.at(index))) {
         return;
     }
 
@@ -594,7 +601,7 @@ void OcrJobManagerWidget::openJobResult(int index)
 void OcrJobManagerWidget::copySelectedResult()
 {
     const int index = selectedJobIndex();
-    if (index >= 0 && !jobResultText(m_jobs.at(index)).isEmpty()) {
+    if (index >= 0 && jobHasCopyableResult(m_jobs.at(index))) {
         FlameshotDaemon::copyToClipboard(jobResultText(m_jobs.at(index)));
     }
 }

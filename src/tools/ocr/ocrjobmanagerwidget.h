@@ -66,6 +66,8 @@ private:
     void setLatexPreviewMessage(const QString& message);
     QString jobResultText(const Job& job) const;
     QString jobFallbackText(const Job& job) const;
+    bool jobHasCopyableResult(const Job& job) const;
+    bool jobHasOpenableResult(const Job& job) const;
     QString resultPaneTitle(const Job& job) const;
     int selectedJobIndex() const;
     int jobIndexById(int id) const;
